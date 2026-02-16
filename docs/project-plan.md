@@ -152,10 +152,16 @@
 - [ ] Add Stocks
 
 ### 3. Strategy Type
-- [ ] Grid Trading
+- [x] **Grid Trading** - Selected by Andrey (2026-02-16)
 - [ ] DCA
 - [ ] Momentum
 - [ ] Mean Reversion
+
+**Rationale:**
+- Simple to understand
+- Proven to work in research (+9-21% in downtrends)
+- Works well in volatile crypto markets
+- Easy to automate
 
 ### 4. Initial Exchange
 - [ ] Binance (recommended)
