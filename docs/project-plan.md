@@ -11,9 +11,10 @@
 ## Phase 1: Foundation (Week 1-2)
 
 ### 1.1 Tech Stack Selection
-- [ ] **Language:** Python 3.11+
-- [ ] **Exchange API:** CCXT (supports 100+ exchanges)
-- [ ] **AI Layer:** LangChain + OpenAI (or local LLM)
+- [x] **Language:** Python 3.11+
+- [x] **Trading Core:** Freqtrade (as library)
+- [x] **Exchange API:** CCXT (via Freqtrade)
+- [x] **AI Layer:** LangChain + OpenRouter
 - [ ] **Data Storage:** SQLite / PostgreSQL
 - [ ] **Deployment:** Docker
 
@@ -23,29 +24,32 @@
 │                      TRADING BOT                             │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    │
-│  │   Inputs    │    │   Brain     │    │  Execution  │    │
-│  │             │───▶│             │───▶│             │    │
-│  │ - Market    │    │ - AI Agent  │    │ - CCXT      │    │
-│  │ - News      │    │ - Strategy  │    │ - Orders    │    │
-│  │ - Signals   │    │ - Risk Mgmt │    │ - Portfolio │    │
+│  │   Inputs    │    │   Brain     │    │   Freqtrade │    │
+│  │             │───▶│   (AI)      │───▶│   (Core)    │    │
+│  │ - Market    │    │ - LLM       │    │ - Orders    │    │
+│  │ - News      │    │ - Strategy  │    │ - Positions │    │
+│  │ - Signals   │    │ - Risk      │    │ - CCXT      │    │
 │  └─────────────┘    └─────────────┘    └─────────────┘    │
-│         │                  │                   │            │
-│         └──────────────────┴───────────────────┘            │
-│                           │                                 │
-│                    ┌──────▼──────┐                         │
-│                    │   Storage   │                         │
+│                           │                   │             │
+│                    ┌──────▼──────┐            │             │
+│                    │   Storage   │◀───────────┘             │
 │                    │ - SQLite    │                         │
 │                    │ - Logs      │                         │
 │                    └─────────────┘                         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
+**Stack:**
+- **Freqtrade Core:** Order execution, position management, exchange connectivity
+- **AI Agent:** LLM decision making (OpenRouter)
+- **Custom Strategy:** Grid with AI enhancements
+
 ### 1.3 Core Components
 1. **Data Collector** — Market data, news, signals
-2. **AI Agent** — Decision making (LLM-based)
-3. **Strategy Engine** — Rule-based backup/filter
+2. **AI Agent** — Decision making (LLM-based via LangChain)
+3. **Strategy Engine** — Grid with AI enhancements
 4. **Risk Manager** — Position sizing, stop-loss
-5. **Order Executor** — CCXT integration
+5. **Freqtrade Core** — Order execution, position management
 6. **Portfolio Tracker** — PnL, positions
 
 ---
@@ -60,7 +64,7 @@
 - [ ] Database schema
 
 ### 2.2 Exchange Integration
-- [ ] CCXT setup
+- [ ] Setup Freqtrade as library
 - [ ] API key management
 - [ ] Testnet connection (Binance Testnet)
 - [ ] Basic order execution (market/limit)
@@ -142,14 +146,10 @@
 ## Technical Decisions to Make
 
 ### 1. AI Approach
-- [ ] Full AI (autonomous)
-- [ ] AI-assisted (human approval)
-- [ ] Hybrid (AI + rules)
+- [x] **Full AI** (autonomous) - Selected
 
 ### 2. Trading Style
-- [ ] Crypto only
-- [ ] Add Forex
-- [ ] Add Stocks
+- [x] **Crypto only** - Selected (+ Stocks later)
 
 ### 3. Strategy Type
 - [x] **Grid Trading** - Selected by Andrey (2026-02-16)
@@ -162,6 +162,9 @@
 - Proven to work in research (+9-21% in downtrends)
 - Works well in volatile crypto markets
 - Easy to automate
+
+### 4. Implementation
+- [x] **Freqtrade as core + custom AI** - Selected by Andrey (2026-02-16)
 
 ### 4. Initial Exchange
 - [ ] Binance (recommended)
