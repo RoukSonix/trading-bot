@@ -1,0 +1,45 @@
+[project]
+name = "trading-bot"
+version = "0.1.0"
+description = "AI-assisted trading bot with Grid strategy"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "freqtrade>=2.0.0",
+    "ccxt>=4.0.0",
+    "langchain>=0.3.0",
+    "langchain-openrouter>=0.3.0",
+    "openrouter>=0.4.0",
+    "pandas>=2.2.0",
+    "pandas-ta>=0.3.14b",
+    "python-dotenv>=1.0.0",
+    "sqlalchemy>=2.0.0",
+    "aiosqlite>=0.20.0",
+    "numpy>=2.0.0",
+    "python-telegram-bot>=21.0",
+    "loguru>=0.7.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+    "mypy>=1.14.0",
+    "pre-commit>=4.0.0",
+    "black>=24.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+target-version = "py314"
+
+[tool.mypy]
+python_version = "3.14"
+strict = true

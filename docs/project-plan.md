@@ -11,7 +11,7 @@
 ## Phase 1: Foundation (Week 1-2)
 
 ### 1.1 Tech Stack Selection
-- [x] **Language:** Python 3.11+
+- [x] **Language:** Python 3.14+
 - [x] **Trading Core:** Freqtrade (as library)
 - [x] **Exchange API:** CCXT (via Freqtrade)
 - [x] **AI Layer:** LangChain + OpenRouter
@@ -167,9 +167,7 @@
 - [x] **Freqtrade as core + custom AI** - Selected by Andrey (2026-02-16)
 
 ### 4. Initial Exchange
-- [ ] Binance (recommended)
-- [ ] Bybit
-- [ ] OKX
+- [x] **Binance** - Selected
 
 ### 5. AI Provider
 - [x] **OpenRouter** (unified API to multiple LLMs)
