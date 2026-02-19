@@ -1,13 +1,13 @@
 """Trading Bot main entry point."""
 
 import sys
+import time
 from loguru import logger
 
 from trading_bot.config import settings
 from trading_bot.core.exchange import exchange_client
-from trading_bot.core.data_collector import data_collector
-from trading_bot.core.indicators import indicators
-from trading_bot.strategies.grid import GridStrategy, GridConfig
+from trading_bot.core.order_manager import order_manager, OrderType
+from trading_bot.core.position_manager import position_manager
 
 
 def setup_logging():
@@ -44,89 +44,105 @@ def main():
     
     symbol = "BTC/USDT"
     
-    # Get current price
+    # Get current price and balance
     ticker = exchange_client.get_ticker(symbol)
     current_price = ticker["last"]
+    
+    usdt_balance = exchange_client.get_balance("USDT")
+    btc_balance = exchange_client.get_balance("BTC")
+    
     logger.info(f"\n💰 Current {symbol} price: ${current_price:,.2f}")
+    logger.info(f"💵 USDT Balance: ${usdt_balance['free']:,.2f}")
+    logger.info(f"₿ BTC Balance: {btc_balance['free']:.6f}")
     
-    # === Sprint 3: Grid Strategy Test ===
+    # === Sprint 4: Order Execution Test ===
     logger.info("\n" + "=" * 50)
-    logger.info("📊 GRID STRATEGY TEST")
+    logger.info("📊 ORDER EXECUTION TEST (TESTNET)")
     logger.info("=" * 50)
     
-    # Configure grid
-    config = GridConfig(
-        grid_levels=5,           # 5 levels on each side
-        grid_spacing_pct=0.5,    # 0.5% spacing
-        amount_per_level=0.001,  # 0.001 BTC per level
+    # Test 1: Place a limit buy order below current price
+    buy_price = current_price * 0.99  # 1% below
+    buy_amount = 0.001  # Small amount for testing
+    
+    logger.info(f"\n--- Test 1: Limit BUY order ---")
+    buy_order = order_manager.create_limit_order(
+        symbol=symbol,
+        side="buy",
+        amount=buy_amount,
+        price=buy_price,
     )
+    logger.info(f"Order status: {buy_order.status.value}")
     
-    # Initialize strategy
-    strategy = GridStrategy(symbol=symbol, config=config)
-    strategy.start()
+    # Test 2: Place a limit sell order above current price
+    sell_price = current_price * 1.01  # 1% above
     
-    # Setup grid around current price
-    strategy.setup_grid(current_price)
+    logger.info(f"\n--- Test 2: Limit SELL order ---")
+    # First check if we have BTC to sell
+    if btc_balance["free"] >= buy_amount:
+        sell_order = order_manager.create_limit_order(
+            symbol=symbol,
+            side="sell",
+            amount=buy_amount,
+            price=sell_price,
+        )
+        logger.info(f"Order status: {sell_order.status.value}")
+    else:
+        logger.info(f"Skipped - insufficient BTC balance ({btc_balance['free']:.6f})")
     
-    # Print grid visualization
-    strategy.print_grid()
+    # Test 3: Check open orders
+    logger.info(f"\n--- Test 3: Open orders ---")
+    open_orders = order_manager.get_open_orders(symbol)
+    logger.info(f"Open orders: {len(open_orders)}")
+    for order in open_orders[:5]:
+        logger.info(f"  {order['side'].upper()} {order['amount']} @ ${order['price']:,.2f} [{order['status']}]")
     
-    # Simulate price movements
+    # Test 4: Cancel the test orders
+    logger.info(f"\n--- Test 4: Cancel test orders ---")
+    if buy_order.id:
+        order_manager.cancel_order(buy_order.id, symbol)
+    
+    # Test 5: Market order (actually executes!)
+    logger.info(f"\n--- Test 5: Market BUY order ---")
+    market_order = order_manager.create_market_order(
+        symbol=symbol,
+        side="buy",
+        amount=0.0001,  # Very small amount
+    )
+    logger.info(f"Order status: {market_order.status.value}")
+    
+    if market_order.status.value == "filled":
+        logger.info(f"Filled at: ${market_order.price:,.2f}")
+        logger.info(f"Cost: ${market_order.cost:.4f}")
+        
+        # Update position
+        position_manager.update_position(
+            symbol=symbol,
+            side="buy",
+            amount=market_order.filled,
+            price=market_order.price,
+        )
+    
+    # Test 6: Position tracking
+    logger.info(f"\n--- Test 6: Position tracking ---")
+    position_manager.calculate_unrealized_pnl(symbol, current_price)
+    position_manager.print_summary()
+    
+    # Final balances
     logger.info("\n" + "=" * 50)
-    logger.info("🎮 PAPER TRADING SIMULATION")
+    logger.info("📈 FINAL BALANCES")
     logger.info("=" * 50)
     
-    # Simulate prices (going down then up)
-    simulated_prices = [
-        current_price * 0.995,  # -0.5%
-        current_price * 0.990,  # -1.0%
-        current_price * 0.985,  # -1.5%
-        current_price * 0.990,  # -1.0% (bounce)
-        current_price * 0.995,  # -0.5%
-        current_price * 1.000,  # back to start
-        current_price * 1.005,  # +0.5%
-        current_price * 1.010,  # +1.0%
-    ]
+    usdt_balance = exchange_client.get_balance("USDT")
+    btc_balance = exchange_client.get_balance("BTC")
     
-    # Get some candle data for the strategy (not really used in grid but good practice)
-    candles = data_collector.get_ohlcv(symbol, "1h", limit=50)
-    df = indicators.to_dataframe(candles)
-    df = indicators.add_all_indicators(df)
+    logger.info(f"💵 USDT: ${usdt_balance['free']:,.2f}")
+    logger.info(f"₿ BTC: {btc_balance['free']:.6f}")
     
-    for i, price in enumerate(simulated_prices):
-        logger.info(f"\n--- Step {i+1}: Price = ${price:,.2f} ---")
-        
-        # Calculate signals
-        signals = strategy.calculate_signals(df, price)
-        
-        # Execute paper trades
-        for signal in signals:
-            trade = strategy.execute_paper_trade(signal)
-            if trade["status"] == "filled":
-                logger.info(f"  Balance: ${trade['balance']:,.2f} USDT | Holdings: {trade['holdings']:.6f} BTC")
+    portfolio = position_manager.get_portfolio_value({symbol: current_price})
+    logger.info(f"📊 Portfolio Value: ${portfolio['total_value']:,.2f}")
+    logger.info(f"📊 Total PnL: ${portfolio['total_pnl']:+,.2f}")
     
-    # Final status
-    logger.info("\n" + "=" * 50)
-    logger.info("📈 FINAL STATUS")
-    logger.info("=" * 50)
-    
-    status = strategy.get_status()
-    logger.info(f"Total trades: {status['paper_trading']['trades_count']}")
-    logger.info(f"USDT Balance: ${status['paper_trading']['balance_usdt']:,.2f}")
-    logger.info(f"BTC Holdings: {status['paper_trading']['holdings_btc']:.6f}")
-    
-    # Calculate final portfolio value at current price
-    portfolio_value = status['paper_trading']['balance_usdt'] + (status['paper_trading']['holdings_btc'] * current_price)
-    pnl = portfolio_value - 10000  # Started with 10000
-    pnl_pct = (pnl / 10000) * 100
-    
-    logger.info(f"Portfolio Value: ${portfolio_value:,.2f}")
-    logger.info(f"PnL: ${pnl:+,.2f} ({pnl_pct:+.2f}%)")
-    
-    # Print final grid
-    strategy.print_grid()
-    
-    logger.info("\n✅ Sprint 3 complete! Grid strategy working.")
+    logger.info("\n✅ Sprint 4 complete! Order execution working.")
 
 
 if __name__ == "__main__":

@@ -204,17 +204,20 @@
 - [x] Индикаторы (SMA, EMA, RSI, BB, MACD, ATR)
 - [x] Market analysis output
 
-### Sprint 3: Grid Strategy ⬅️ CURRENT
+### Sprint 3: Grid Strategy ✅ DONE
 **Goal:** Реализовать Grid Trading логику
-**Time:** 3-4 часа
+**Time:** ~15 min
+**Completed:** 2025-02-19
 
-- [ ] Strategy base class
-- [ ] Grid logic:
-  - [ ] Расчёт уровней сетки (price levels)
-  - [ ] Buy/Sell сигналы
-- [ ] Paper trading mode (симуляция)
+- [x] Strategy base class (BaseStrategy, Signal, GridLevel)
+- [x] Grid logic:
+  - [x] Расчёт уровней сетки (price levels)
+  - [x] Buy/Sell сигналы
+  - [x] Auto-create opposite levels after fills
+- [x] Paper trading mode (симуляция)
+- [x] Visual grid status display
 
-### Sprint 4: Order Execution
+### Sprint 4: Order Execution ⬅️ CURRENT
 **Goal:** Реальное исполнение ордеров
 **Time:** 2-3 часа
 
