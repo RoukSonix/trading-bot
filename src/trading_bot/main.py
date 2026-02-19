@@ -7,6 +7,7 @@ from trading_bot.config import settings
 from trading_bot.core.exchange import exchange_client
 from trading_bot.core.data_collector import data_collector
 from trading_bot.core.indicators import indicators
+from trading_bot.strategies.grid import GridStrategy, GridConfig
 
 
 def setup_logging():
@@ -41,65 +42,91 @@ def main():
     # Connect to exchange
     exchange_client.connect()
     
-    # === Sprint 2: Data Layer Test ===
     symbol = "BTC/USDT"
-    timeframe = "1h"
     
-    # Fetch and store OHLCV data
-    logger.info("")
-    logger.info(f"📊 Fetching {symbol} {timeframe} data...")
-    new_candles = data_collector.fetch_and_store_ohlcv(symbol, timeframe, limit=100)
-    total_candles = data_collector.count_candles(symbol, timeframe)
-    logger.info(f"Database: {total_candles} candles stored")
+    # Get current price
+    ticker = exchange_client.get_ticker(symbol)
+    current_price = ticker["last"]
+    logger.info(f"\n💰 Current {symbol} price: ${current_price:,.2f}")
     
-    # Get data from DB and calculate indicators
-    logger.info("")
-    logger.info("📈 Calculating indicators...")
-    candles = data_collector.get_ohlcv(symbol, timeframe, limit=50)
+    # === Sprint 3: Grid Strategy Test ===
+    logger.info("\n" + "=" * 50)
+    logger.info("📊 GRID STRATEGY TEST")
+    logger.info("=" * 50)
+    
+    # Configure grid
+    config = GridConfig(
+        grid_levels=5,           # 5 levels on each side
+        grid_spacing_pct=0.5,    # 0.5% spacing
+        amount_per_level=0.001,  # 0.001 BTC per level
+    )
+    
+    # Initialize strategy
+    strategy = GridStrategy(symbol=symbol, config=config)
+    strategy.start()
+    
+    # Setup grid around current price
+    strategy.setup_grid(current_price)
+    
+    # Print grid visualization
+    strategy.print_grid()
+    
+    # Simulate price movements
+    logger.info("\n" + "=" * 50)
+    logger.info("🎮 PAPER TRADING SIMULATION")
+    logger.info("=" * 50)
+    
+    # Simulate prices (going down then up)
+    simulated_prices = [
+        current_price * 0.995,  # -0.5%
+        current_price * 0.990,  # -1.0%
+        current_price * 0.985,  # -1.5%
+        current_price * 0.990,  # -1.0% (bounce)
+        current_price * 0.995,  # -0.5%
+        current_price * 1.000,  # back to start
+        current_price * 1.005,  # +0.5%
+        current_price * 1.010,  # +1.0%
+    ]
+    
+    # Get some candle data for the strategy (not really used in grid but good practice)
+    candles = data_collector.get_ohlcv(symbol, "1h", limit=50)
     df = indicators.to_dataframe(candles)
     df = indicators.add_all_indicators(df)
     
-    # Show latest values
-    latest = df.iloc[-1]
-    logger.info(f"Latest {symbol} data:")
-    logger.info(f"  Close:      ${latest['close']:,.2f}")
-    logger.info(f"  SMA(20):    ${latest['sma_20']:,.2f}")
-    logger.info(f"  SMA(50):    ${latest['sma_50']:,.2f}")
-    logger.info(f"  RSI(14):    {latest['rsi']:.1f}")
-    logger.info(f"  BB Upper:   ${latest['bb_upper']:,.2f}")
-    logger.info(f"  BB Lower:   ${latest['bb_lower']:,.2f}")
-    logger.info(f"  MACD:       {latest['macd']:.2f}")
-    logger.info(f"  ATR:        ${latest['atr']:,.2f}")
+    for i, price in enumerate(simulated_prices):
+        logger.info(f"\n--- Step {i+1}: Price = ${price:,.2f} ---")
+        
+        # Calculate signals
+        signals = strategy.calculate_signals(df, price)
+        
+        # Execute paper trades
+        for signal in signals:
+            trade = strategy.execute_paper_trade(signal)
+            if trade["status"] == "filled":
+                logger.info(f"  Balance: ${trade['balance']:,.2f} USDT | Holdings: {trade['holdings']:.6f} BTC")
     
-    # Market analysis
-    logger.info("")
-    logger.info("🔍 Market Analysis:")
+    # Final status
+    logger.info("\n" + "=" * 50)
+    logger.info("📈 FINAL STATUS")
+    logger.info("=" * 50)
     
-    # RSI analysis
-    rsi = latest["rsi"]
-    if rsi > 70:
-        logger.info(f"  RSI: OVERBOUGHT ({rsi:.1f})")
-    elif rsi < 30:
-        logger.info(f"  RSI: OVERSOLD ({rsi:.1f})")
-    else:
-        logger.info(f"  RSI: Neutral ({rsi:.1f})")
+    status = strategy.get_status()
+    logger.info(f"Total trades: {status['paper_trading']['trades_count']}")
+    logger.info(f"USDT Balance: ${status['paper_trading']['balance_usdt']:,.2f}")
+    logger.info(f"BTC Holdings: {status['paper_trading']['holdings_btc']:.6f}")
     
-    # Price vs SMA
-    close = latest["close"]
-    sma20 = latest["sma_20"]
-    if close > sma20:
-        logger.info(f"  Trend: BULLISH (price above SMA20)")
-    else:
-        logger.info(f"  Trend: BEARISH (price below SMA20)")
+    # Calculate final portfolio value at current price
+    portfolio_value = status['paper_trading']['balance_usdt'] + (status['paper_trading']['holdings_btc'] * current_price)
+    pnl = portfolio_value - 10000  # Started with 10000
+    pnl_pct = (pnl / 10000) * 100
     
-    # Bollinger position
-    bb_upper = latest["bb_upper"]
-    bb_lower = latest["bb_lower"]
-    bb_position = (close - bb_lower) / (bb_upper - bb_lower) * 100
-    logger.info(f"  BB Position: {bb_position:.0f}% (0=lower, 100=upper)")
+    logger.info(f"Portfolio Value: ${portfolio_value:,.2f}")
+    logger.info(f"PnL: ${pnl:+,.2f} ({pnl_pct:+.2f}%)")
     
-    logger.info("")
-    logger.info("✅ Sprint 2 complete! Data layer working.")
+    # Print final grid
+    strategy.print_grid()
+    
+    logger.info("\n✅ Sprint 3 complete! Grid strategy working.")
 
 
 if __name__ == "__main__":

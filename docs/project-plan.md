@@ -193,16 +193,18 @@
   - [x] Получить OHLCV (свечи)
 - [x] Тест: запустить и увидеть данные в консоли
 
-### Sprint 2: Data Layer ⬅️ CURRENT
+### Sprint 2: Data Layer ✅ DONE
 **Goal:** Сбор и хранение рыночных данных
-**Time:** 2-3 часа
+**Time:** ~20 min
+**Completed:** 2025-02-19
 
-- [ ] Database models (SQLAlchemy + SQLite)
-- [ ] Fetch OHLCV данные (свечи)
-- [ ] Сохранение истории в БД
-- [ ] Индикаторы (RSI, MA, Bollinger)
+- [x] Database models (OHLCV, Trade, Position)
+- [x] Fetch OHLCV данные (свечи)
+- [x] Сохранение истории в SQLite
+- [x] Индикаторы (SMA, EMA, RSI, BB, MACD, ATR)
+- [x] Market analysis output
 
-### Sprint 3: Grid Strategy
+### Sprint 3: Grid Strategy ⬅️ CURRENT
 **Goal:** Реализовать Grid Trading логику
 **Time:** 3-4 часа
 
