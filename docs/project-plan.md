@@ -177,13 +177,69 @@
 
 ---
 
-## Immediate Next Steps
+## Development Sprints
 
-1. [ ] Confirm tech stack choices
-2. [ ] Select trading style (crypto + strategy)
-3. [ ] Choose initial exchange
-4. [ ] Set up development environment
-5. [ ] Create GitHub Issues for tasks
+### Sprint 1: Exchange Connection ⬅️ CURRENT
+**Goal:** Подключиться к Binance testnet и получить данные
+**Time:** 3-4 часа
+
+- [ ] Config module (pydantic-settings)
+- [ ] Exchange client (CCXT → Binance testnet)
+- [ ] Базовые операции:
+  - [ ] Получить баланс
+  - [ ] Получить текущую цену
+  - [ ] Получить order book
+- [ ] Тест: запустить и увидеть данные в консоли
+
+### Sprint 2: Data Layer
+**Goal:** Сбор и хранение рыночных данных
+**Time:** 2-3 часа
+
+- [ ] Database models (SQLAlchemy + SQLite)
+- [ ] Fetch OHLCV данные (свечи)
+- [ ] Сохранение истории в БД
+- [ ] Индикаторы (RSI, MA, Bollinger)
+
+### Sprint 3: Grid Strategy
+**Goal:** Реализовать Grid Trading логику
+**Time:** 3-4 часа
+
+- [ ] Strategy base class
+- [ ] Grid logic:
+  - [ ] Расчёт уровней сетки (price levels)
+  - [ ] Buy/Sell сигналы
+- [ ] Paper trading mode (симуляция)
+
+### Sprint 4: Order Execution
+**Goal:** Реальное исполнение ордеров
+**Time:** 2-3 часа
+
+- [ ] Order manager
+- [ ] Limit orders (buy/sell)
+- [ ] Position tracking
+- [ ] PnL расчёт
+
+### Sprint 5: AI Layer
+**Goal:** AI-enhanced decision making
+**Time:** 4-5 часов
+
+- [ ] LangChain setup + OpenRouter
+- [ ] Market analysis prompts
+- [ ] AI-enhanced signals
+- [ ] Risk assessment
+
+### Sprint 6: Integration & Testing
+**Goal:** Собрать всё вместе
+**Time:** 3-4 часа
+
+- [ ] End-to-end pipeline
+- [ ] Backtesting на исторических данных
+- [ ] Paper trading 24h test
+- [ ] Monitoring & alerts
+
+---
+
+## Immediate Next Steps
 
 ---
 
