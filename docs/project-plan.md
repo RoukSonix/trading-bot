@@ -179,19 +179,21 @@
 
 ## Development Sprints
 
-### Sprint 1: Exchange Connection ⬅️ CURRENT
+### Sprint 1: Exchange Connection ✅ DONE
 **Goal:** Подключиться к Binance testnet и получить данные
-**Time:** 3-4 часа
+**Time:** ~30 min
+**Completed:** 2025-02-19
 
-- [ ] Config module (pydantic-settings)
-- [ ] Exchange client (CCXT → Binance testnet)
-- [ ] Базовые операции:
-  - [ ] Получить баланс
-  - [ ] Получить текущую цену
-  - [ ] Получить order book
-- [ ] Тест: запустить и увидеть данные в консоли
+- [x] Config module (pydantic-settings)
+- [x] Exchange client (CCXT → Binance testnet)
+- [x] Базовые операции:
+  - [x] Получить баланс
+  - [x] Получить текущую цену
+  - [x] Получить order book
+  - [x] Получить OHLCV (свечи)
+- [x] Тест: запустить и увидеть данные в консоли
 
-### Sprint 2: Data Layer
+### Sprint 2: Data Layer ⬅️ CURRENT
 **Goal:** Сбор и хранение рыночных данных
 **Time:** 2-3 часа
 
