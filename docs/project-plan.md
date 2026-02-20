@@ -131,7 +131,7 @@
 
 ### 5.1 Infrastructure
 - [ ] VPS/Server setup
-- [ ] 24/7运行
+- [ ] 24/7 operation
 - [ ] Monitoring & alerts
 - [ ] Backup system
 
@@ -140,6 +140,14 @@
 - [ ] Strategy refinement
 - [ ] AI prompt optimization
 - [ ] Fee optimization
+
+### 5.3 Web Dashboard
+- [ ] Real-time grid visualization
+- [ ] Position & PnL display
+- [ ] Trade history
+- [ ] AI decisions log
+- [ ] Manual controls (pause/resume/adjust)
+- [ ] Tech: FastAPI + React/Next.js or HTMX
 
 ---
 
@@ -217,16 +225,18 @@
 - [x] Paper trading mode (симуляция)
 - [x] Visual grid status display
 
-### Sprint 4: Order Execution ⬅️ CURRENT
+### Sprint 4: Order Execution ✅ DONE
 **Goal:** Реальное исполнение ордеров
-**Time:** 2-3 часа
+**Time:** ~15 min
+**Completed:** 2025-02-19
 
-- [ ] Order manager
-- [ ] Limit orders (buy/sell)
-- [ ] Position tracking
-- [ ] PnL расчёт
+- [x] Order manager (limit/market orders)
+- [x] Limit orders (buy/sell) — tested on testnet
+- [x] Market orders — executed real trade!
+- [x] Position tracking (entry price, amount)
+- [x] PnL расчёт (unrealized + realized)
 
-### Sprint 5: AI Layer
+### Sprint 5: AI Layer ⬅️ CURRENT
 **Goal:** AI-enhanced decision making
 **Time:** 4-5 часов
 

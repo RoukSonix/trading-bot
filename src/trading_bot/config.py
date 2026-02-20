@@ -38,6 +38,40 @@ class Settings(BaseSettings):
         description="Binance WebSocket URL"
     )
     
+    # OpenRouter AI
+    openrouter_api_key: str = Field(
+        default="",
+        description="OpenRouter API key"
+    )
+    openrouter_model: str = Field(
+        default="anthropic/claude-sonnet-4-20250514",
+        description="Model to use via OpenRouter"
+    )
+    openrouter_base_url: str = Field(
+        default="https://openrouter.ai/api/v1",
+        description="OpenRouter API base URL"
+    )
+    
+    # AI Settings
+    ai_temperature: float = Field(
+        default=0.3,
+        description="LLM temperature (0-1, lower = more deterministic)"
+    )
+    ai_max_tokens: int = Field(
+        default=2048,
+        description="Max tokens in AI response"
+    )
+    
+    # Telegram Alerts
+    telegram_bot_token: str = Field(
+        default="",
+        description="Telegram bot token from @BotFather"
+    )
+    telegram_chat_id: str = Field(
+        default="",
+        description="Telegram chat ID for alerts"
+    )
+    
     # Logging
     log_level: str = Field(default="INFO", description="Logging level")
     

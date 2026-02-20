@@ -17,11 +17,21 @@ class Indicators:
             candles: List of OHLCV dicts
             
         Returns:
-            DataFrame with OHLCV columns
+            DataFrame with OHLCV columns and datetime index
         """
         df = pd.DataFrame(candles)
-        if "datetime" in df.columns:
+        
+        # Convert timestamp to datetime
+        if "timestamp" in df.columns:
+            # Handle milliseconds
+            if df["timestamp"].iloc[0] > 1e12:
+                df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms")
+            else:
+                df["datetime"] = pd.to_datetime(df["timestamp"], unit="s")
             df.set_index("datetime", inplace=True)
+        elif "datetime" in df.columns:
+            df.set_index("datetime", inplace=True)
+        
         return df
     
     @staticmethod
