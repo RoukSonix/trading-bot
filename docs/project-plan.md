@@ -236,23 +236,24 @@
 - [x] Position tracking (entry price, amount)
 - [x] PnL расчёт (unrealized + realized)
 
-### Sprint 5: AI Layer ⬅️ CURRENT
+### Sprint 5: AI Layer ✅ DONE
 **Goal:** AI-enhanced decision making
-**Time:** 4-5 часов
+**Completed:** 2026-02-20
 
-- [ ] LangChain setup + OpenRouter
-- [ ] Market analysis prompts
-- [ ] AI-enhanced signals
-- [ ] Risk assessment
+- [x] LangChain setup + OpenRouter
+- [x] Market analysis prompts
+- [x] AI-enhanced signals (AIGridStrategy)
+- [x] Risk assessment
+- [x] Periodic AI review
 
-### Sprint 6: Integration & Testing
+### Sprint 6: Integration & Testing ✅ DONE
 **Goal:** Собрать всё вместе
-**Time:** 3-4 часа
+**Completed:** 2026-02-20
 
-- [ ] End-to-end pipeline
-- [ ] Backtesting на исторических данных
-- [ ] Paper trading 24h test
-- [ ] Monitoring & alerts
+- [x] End-to-end pipeline (bot.py)
+- [x] Backtesting engine (backtest/)
+- [x] Telegram alerts (alerts/)
+- [ ] Paper trading 24h test (ready to run)
 
 ---
 
