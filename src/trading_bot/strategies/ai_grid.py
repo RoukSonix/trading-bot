@@ -364,8 +364,21 @@ REASON: <one line explanation>
             # Apply adjustments if needed
             if result["action"] == "ADJUST" and result["new_lower"] and result["new_upper"]:
                 logger.info(f"🔧 Adjusting grid to ${result['new_lower']:,.2f} - ${result['new_upper']:,.2f}")
-                self.last_optimization.lower_price = result["new_lower"]
-                self.last_optimization.upper_price = result["new_upper"]
+                
+                # Create optimization object if it doesn't exist
+                if self.last_optimization is None:
+                    from trading_bot.ai.agent import GridOptimization
+                    self.last_optimization = GridOptimization(
+                        lower_price=result["new_lower"],
+                        upper_price=result["new_upper"],
+                        num_levels=self.config.grid_levels * 2,
+                        confidence=70,
+                        reasoning="AI periodic review adjustment",
+                    )
+                else:
+                    self.last_optimization.lower_price = result["new_lower"]
+                    self.last_optimization.upper_price = result["new_upper"]
+                
                 self._apply_optimization(current_price)
             
             return result
