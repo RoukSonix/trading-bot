@@ -95,6 +95,11 @@ class TradingAgent:
                 "HTTP-Referer": "https://github.com/trading-bot",
                 "X-Title": "Trading Bot",
             },
+            extra_body={
+                "provider": {
+                    "allow_fallbacks": False,  # Don't switch to other models/providers
+                },
+            },
         )
         logger.info(f"AI Agent initialized with model: {settings.openrouter_model}")
     
