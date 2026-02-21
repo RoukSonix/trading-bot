@@ -289,15 +289,19 @@
 **Goal:** Веб-интерфейс для мониторинга и управления
 **Priority:** MEDIUM
 
-**Tech:** FastAPI + HTMX (lightweight, no heavy frontend)
+**Tech:** Streamlit (reference: QuantMuse dashboard) + FastAPI backend
+
+**Reference:** `/Users/a.lazarev/CentricVoid/QuantMuse/data_service/dashboard/`
 
 **Задачи:**
-- [ ] FastAPI backend
+- [ ] Streamlit dashboard (из QuantMuse)
+- [ ] FastAPI backend for API
 - [ ] Real-time grid visualization
 - [ ] Position & PnL display
 - [ ] Trade history table
 - [ ] AI decisions log
 - [ ] Manual controls (pause/resume/adjust grid)
+- [ ] K-line charts with indicators
 - [ ] Authentication (basic)
 
 ---
@@ -335,16 +339,26 @@
 **Priority:** LOW — после стабилизации текущего бота
 
 **Зачем:**
-- Планируем добавить Polymarket бота (Market Making, Arbitrage)
-- Binance и Polymarket боты будут использовать общий код (AI, alerts, config)
-- Монорепо упрощает sharing utilities и синхронизацию версий
+- Polymarket бот (prediction markets)
+- Stocks бот (акции)
+- Общий код (AI, alerts, config, factors)
+- C++ backend для high-perf execution (позже)
 
 **Целевая структура:**
 ```
 trading-bots/
-├── shared/           # AI, alerts, config, utils
-├── binance-bot/      # Grid Trading
-└── polymarket-bot/   # Market Making, Arbitrage
+├── shared/                    # Общий код для всех ботов
+│   ├── ai/                    # LLM integration, prompts
+│   ├── alerts/                # Telegram, Discord notifications
+│   ├── config/                # Settings, env management
+│   ├── factors/               # Factor analysis (из QuantMuse)
+│   ├── api_gateway/           # Rate limiting, caching
+│   ├── vector_db/             # News embeddings, semantic search
+│   └── utils/                 # Logging, helpers
+├── binance-bot/               # Crypto Grid Trading
+├── polymarket-bot/            # Prediction Markets
+├── stocks-bot/                # Stocks (Yahoo, Alpha Vantage)
+└── cpp-engine/                # C++ high-perf backend (future)
 ```
 
 **Задачи:**
@@ -352,24 +366,164 @@ trading-bots/
 - [ ] Вынести shared код
 - [ ] Перенести binance-bot
 - [ ] Настроить imports
-- [ ] Создать scaffold для polymarket-bot
+- [ ] Создать scaffolds для всех ботов
 
 ---
 
-### Sprint 13: Polymarket Bot ⬜ FUTURE
+### Sprint 13: Factor Analysis Integration ⬜ FUTURE
+**Goal:** Добавить factor analysis из QuantMuse
+**Priority:** FUTURE
+**Reference:** `/Users/a.lazarev/CentricVoid/QuantMuse/data_service/factors/`
+
+**Factors:**
+- Momentum (60d, 20d returns)
+- Value (P/E, P/B ratios)
+- Quality (ROE, debt ratio)
+- Volatility (ATR, std dev)
+- Size (market cap)
+
+**Задачи:**
+- [ ] Портировать FactorCalculator из QuantMuse
+- [ ] Интегрировать с нашим AI agent
+- [ ] Multi-factor scoring для grid optimization
+- [ ] Factor-based stock/crypto screening
+
+---
+
+### Sprint 14: Strategy Framework Expansion ⬜ FUTURE
+**Goal:** Добавить 8 стратегий из QuantMuse
+**Priority:** FUTURE
+**Reference:** `/Users/a.lazarev/CentricVoid/QuantMuse/data_service/strategies/`
+
+**Стратегии для добавления:**
+1. Momentum Strategy
+2. Value Strategy
+3. Quality Growth Strategy
+4. Multi-Factor Strategy
+5. Mean Reversion Strategy
+6. Low Volatility Strategy
+7. Sector Rotation Strategy
+8. Risk Parity Strategy
+
+**Задачи:**
+- [ ] Адаптировать стратегии под crypto
+- [ ] Strategy registry pattern
+- [ ] Parameter optimization framework
+- [ ] A/B testing между стратегиями
+
+---
+
+### Sprint 15: API Gateway & Caching ⬜ FUTURE
+**Goal:** Production-grade API management
+**Priority:** FUTURE
+**Reference:** `/Users/a.lazarev/CentricVoid/QuantMuse/data_service/api/`
+
+**Компоненты:**
+- Rate limiting per endpoint
+- Response caching (Redis)
+- API monitoring & metrics
+- Automatic retries with backoff
+
+**Задачи:**
+- [ ] Портировать api_manager из QuantMuse
+- [ ] Redis integration
+- [ ] Metrics dashboard
+- [ ] API documentation (OpenAPI)
+
+---
+
+### Sprint 16: Vector DB for News ⬜ FUTURE
+**Goal:** Semantic search по новостям для AI analysis
+**Priority:** FUTURE
+**Reference:** `/Users/a.lazarev/CentricVoid/QuantMuse/data_service/vector_db/`
+
+**Компоненты:**
+- Embedding generation (sentence-transformers)
+- Vector storage (ChromaDB / Pinecone)
+- Semantic search
+- News sentiment correlation
+
+**Задачи:**
+- [ ] Портировать vector_store из QuantMuse
+- [ ] News fetching pipeline
+- [ ] Sentiment → trading signal correlation
+- [ ] Integration с AI agent
+
+---
+
+### Sprint 17: Polymarket Bot ⬜ FUTURE
 **Goal:** Бот для prediction markets
 **Priority:** FUTURE — после monorepo
 
 **Стратегии:**
-- Market Making (bid/ask spread)
+- Market Making (bid/ask spread, 1-3% monthly)
 - Sum-to-One Arbitrage (YES + NO < $1)
 - Weather Arbitrage (NOAA vs market)
+- AI Probability (news → probability mispricing)
 
 **Задачи:**
-- [ ] Polymarket API integration
+- [ ] Polymarket CLOB API integration
 - [ ] Market making strategy
-- [ ] Arbitrage detection
+- [ ] Arbitrage detection engine
 - [ ] Polygon blockchain integration
+
+---
+
+### Sprint 18: Stocks Bot ⬜ FUTURE
+**Goal:** Бот для торговли акциями
+**Priority:** FUTURE — после стабилизации crypto
+
+**Data Sources:**
+- Yahoo Finance (free)
+- Alpha Vantage (free tier)
+- IEX Cloud (paid)
+
+**Стратегии:**
+- Multi-factor stock selection
+- Momentum trading
+- Value investing
+- Sector rotation
+
+**Задачи:**
+- [ ] Yahoo Finance integration
+- [ ] Factor-based stock screening
+- [ ] Portfolio optimization
+- [ ] Rebalancing logic
+
+---
+
+### Sprint 19: C++ High-Performance Engine ⬜ FUTURE
+**Goal:** Low-latency execution engine
+**Priority:** FUTURE — когда понадобится HFT
+**Reference:** `/Users/a.lazarev/CentricVoid/QuantMuse/backend/`
+
+**Компоненты:**
+- Order execution (<1ms latency)
+- Risk management engine
+- Portfolio calculations
+- Data loading & caching
+
+**Задачи:**
+- [ ] Study QuantMuse C++ backend
+- [ ] CMake build system
+- [ ] Python bindings (pybind11)
+- [ ] Benchmark vs pure Python
+
+---
+
+## Reference Projects
+
+### QuantMuse
+**Location:** `/Users/a.lazarev/CentricVoid/QuantMuse`
+**GitHub:** https://github.com/0xemmkty/QuantMuse
+
+**Useful modules:**
+- `data_service/factors/` — Factor analysis
+- `data_service/strategies/` — 8 quant strategies
+- `data_service/dashboard/` — Streamlit UI
+- `data_service/api/` — API gateway
+- `data_service/vector_db/` — Vector embeddings
+- `backend/` — C++ execution engine
 
 ---
 
