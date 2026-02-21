@@ -255,41 +255,121 @@
 - [x] Telegram alerts (alerts/)
 - [ ] Paper trading 24h test (ready to run)
 
-### Sprint 7: Monorepo Restructure ⬜ PLANNED
+### Sprint 7: Risk Management ⬜ PLANNED
+**Goal:** Защита капитала и управление рисками
+**Priority:** HIGH — критично перед live trading
+
+**Задачи:**
+- [ ] Position sizing (Kelly criterion / fixed %)
+- [ ] Stop-loss / take-profit per position
+- [ ] Daily loss limit (stop trading if exceeded)
+- [ ] Max drawdown protection
+- [ ] Correlation risk (multi-pair)
+- [ ] Risk metrics dashboard (console)
+
+**Почему важно:** Без risk management даже прибыльная стратегия может обнулить счёт на одном плохом дне.
+
+---
+
+### Sprint 8: Live Trading Preparation ⬜ PLANNED
+**Goal:** Подготовка к торговле на реальные деньги
+**Priority:** HIGH
+
+**Задачи:**
+- [ ] Mainnet connection (Binance production API)
+- [ ] API key security (encrypted storage)
+- [ ] Минимальный капитал test ($50-100)
+- [ ] Emergency stop mechanism
+- [ ] Trade logging to file/DB
+- [ ] PnL reporting
+
+---
+
+### Sprint 9: Web Dashboard ⬜ PLANNED
+**Goal:** Веб-интерфейс для мониторинга и управления
+**Priority:** MEDIUM
+
+**Tech:** FastAPI + HTMX (lightweight, no heavy frontend)
+
+**Задачи:**
+- [ ] FastAPI backend
+- [ ] Real-time grid visualization
+- [ ] Position & PnL display
+- [ ] Trade history table
+- [ ] AI decisions log
+- [ ] Manual controls (pause/resume/adjust grid)
+- [ ] Authentication (basic)
+
+---
+
+### Sprint 10: Infrastructure & DevOps ⬜ PLANNED
+**Goal:** Production-ready deployment
+**Priority:** MEDIUM
+
+**Задачи:**
+- [ ] Docker production setup
+- [ ] VPS deployment (DigitalOcean/Hetzner)
+- [ ] 24/7 operation с auto-restart
+- [ ] Health monitoring (uptime, errors)
+- [ ] Backup system (DB, configs)
+- [ ] Alerting (Telegram on errors/stops)
+
+---
+
+### Sprint 11: Optimization & Tuning ⬜ PLANNED
+**Goal:** Улучшение производительности и прибыльности
+**Priority:** LOW (после стабилизации)
+
+**Задачи:**
+- [ ] AI prompt optimization (A/B testing)
+- [ ] Fee optimization (maker vs taker)
+- [ ] Grid parameter tuning (spacing, levels)
+- [ ] Backtesting improvements
+- [ ] Performance profiling
+- [ ] Multi-timeframe analysis
+
+---
+
+### Sprint 12: Monorepo Restructure ⬜ PLANNED
 **Goal:** Переделать репозиторий под multi-bot архитектуру
-**Priority:** После стабилизации текущего бота
+**Priority:** LOW — после стабилизации текущего бота
 
 **Зачем:**
 - Планируем добавить Polymarket бота (Market Making, Arbitrage)
 - Binance и Polymarket боты будут использовать общий код (AI, alerts, config)
 - Монорепо упрощает sharing utilities и синхронизацию версий
-- Независимая эволюция каждого бота в своей директории
 
 **Целевая структура:**
 ```
-trading-bots/                    # Монорепо
-├── shared/                      # Общий код
-│   ├── ai/                      # LangChain, prompts, agent base
-│   ├── alerts/                  # Telegram, Discord notifications
-│   ├── config/                  # Settings, env management
-│   └── utils/                   # Logging, helpers
-├── binance-bot/                 # Текущий Grid Trading бот
-│   ├── src/
-│   ├── scripts/
-│   └── pyproject.toml
-└── polymarket-bot/              # Новый prediction market бот
-    ├── src/
-    ├── scripts/
-    └── pyproject.toml
+trading-bots/
+├── shared/           # AI, alerts, config, utils
+├── binance-bot/      # Grid Trading
+└── polymarket-bot/   # Market Making, Arbitrage
 ```
 
 **Задачи:**
-- [ ] Создать новый репозиторий `trading-bots`
-- [ ] Вынести shared код (ai/, alerts/, config)
-- [ ] Перенести текущий бот в `binance-bot/`
-- [ ] Настроить imports из shared
-- [ ] Обновить Docker и CI/CD
-- [ ] Создать scaffold для `polymarket-bot/`
+- [ ] Создать монорепо `trading-bots`
+- [ ] Вынести shared код
+- [ ] Перенести binance-bot
+- [ ] Настроить imports
+- [ ] Создать scaffold для polymarket-bot
+
+---
+
+### Sprint 13: Polymarket Bot ⬜ FUTURE
+**Goal:** Бот для prediction markets
+**Priority:** FUTURE — после monorepo
+
+**Стратегии:**
+- Market Making (bid/ask spread)
+- Sum-to-One Arbitrage (YES + NO < $1)
+- Weather Arbitrage (NOAA vs market)
+
+**Задачи:**
+- [ ] Polymarket API integration
+- [ ] Market making strategy
+- [ ] Arbitrage detection
+- [ ] Polygon blockchain integration
 
 ---
 
