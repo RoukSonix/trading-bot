@@ -266,6 +266,14 @@ class AIGridStrategy(GridStrategy):
         status = self.get_status()
         paper = status["paper_trading"]
         
+        # Pre-calculate optional values to avoid f-string issues
+        trend_str = self.last_analysis.trend.value if self.last_analysis else 'N/A'
+        risk_str = self.last_analysis.risk_level.value if self.last_analysis else 'N/A'
+        grid_range_str = (
+            f"${self.last_optimization.lower_price:,.2f} - ${self.last_optimization.upper_price:,.2f}"
+            if self.last_optimization else 'N/A'
+        )
+        
         context = f"""
 Current Market:
 - Price: ${current_price:,.2f}
@@ -285,9 +293,9 @@ Position:
 - Unrealized PnL: ${unrealized_pnl:,.2f}
 
 Last AI Analysis:
-- Trend: {self.last_analysis.trend.value if self.last_analysis else 'N/A'}
-- Risk: {self.last_analysis.risk_level.value if self.last_analysis else 'N/A'}
-- Grid range: {f"${self.last_optimization.lower_price:,.2f} - ${self.last_optimization.upper_price:,.2f}" if self.last_optimization else 'N/A'}
+- Trend: {trend_str}
+- Risk: {risk_str}
+- Grid range: {grid_range_str}
 """
         
         prompt = f"""Review this grid trading position and market state:
