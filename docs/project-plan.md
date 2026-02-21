@@ -255,6 +255,42 @@
 - [x] Telegram alerts (alerts/)
 - [ ] Paper trading 24h test (ready to run)
 
+### Sprint 7: Monorepo Restructure ⬜ PLANNED
+**Goal:** Переделать репозиторий под multi-bot архитектуру
+**Priority:** После стабилизации текущего бота
+
+**Зачем:**
+- Планируем добавить Polymarket бота (Market Making, Arbitrage)
+- Binance и Polymarket боты будут использовать общий код (AI, alerts, config)
+- Монорепо упрощает sharing utilities и синхронизацию версий
+- Независимая эволюция каждого бота в своей директории
+
+**Целевая структура:**
+```
+trading-bots/                    # Монорепо
+├── shared/                      # Общий код
+│   ├── ai/                      # LangChain, prompts, agent base
+│   ├── alerts/                  # Telegram, Discord notifications
+│   ├── config/                  # Settings, env management
+│   └── utils/                   # Logging, helpers
+├── binance-bot/                 # Текущий Grid Trading бот
+│   ├── src/
+│   ├── scripts/
+│   └── pyproject.toml
+└── polymarket-bot/              # Новый prediction market бот
+    ├── src/
+    ├── scripts/
+    └── pyproject.toml
+```
+
+**Задачи:**
+- [ ] Создать новый репозиторий `trading-bots`
+- [ ] Вынести shared код (ai/, alerts/, config)
+- [ ] Перенести текущий бот в `binance-bot/`
+- [ ] Настроить imports из shared
+- [ ] Обновить Docker и CI/CD
+- [ ] Создать scaffold для `polymarket-bot/`
+
 ---
 
 ## Immediate Next Steps
