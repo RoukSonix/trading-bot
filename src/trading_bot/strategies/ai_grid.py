@@ -28,6 +28,7 @@ class AIGridConfig(GridConfig):
     
     # AI settings
     ai_enabled: bool = True
+    ai_required_for_start: bool = True   # If False, start even if AI says no
     ai_confirm_signals: bool = False     # Don't confirm every signal (too slow)
     ai_auto_optimize: bool = True        # Auto-optimize grid parameters on setup
     ai_periodic_review: bool = True      # Periodic AI review of position/market
@@ -98,10 +99,20 @@ class AIGridStrategy(GridStrategy):
         )
         
         # Check if AI recommends grid trading
-        if not self.last_analysis.grid_recommended:
-            return False, f"AI does not recommend grid trading: {self.last_analysis.reasoning[:100]}"
+        ai_approved = self.last_analysis.grid_recommended
         
-        # Get AI-optimized grid parameters
+        if not ai_approved:
+            if self.ai_config.ai_required_for_start:
+                return False, f"AI does not recommend grid trading: {self.last_analysis.reasoning[:100]}"
+            else:
+                logger.warning(f"⚠️ AI does not recommend trading, but ai_required_for_start=False")
+                logger.warning(f"   Reason: {self.last_analysis.reasoning[:100]}")
+                logger.info("Continuing with default grid setup (AI will still do periodic reviews)...")
+                # Use default grid when AI doesn't approve
+                self.setup_grid(current_price)
+                return True, f"Grid ready (AI warning ignored). Periodic review enabled."
+        
+        # Get AI-optimized grid parameters (only if AI approved)
         if self.ai_config.ai_auto_optimize:
             logger.info("🔧 Running AI grid optimization...")
             
@@ -286,7 +297,7 @@ Position:
 Last AI Analysis:
 - Trend: {self.last_analysis.trend.value if self.last_analysis else 'N/A'}
 - Risk: {self.last_analysis.risk_level.value if self.last_analysis else 'N/A'}
-- Grid range: ${self.last_optimization.lower_price:,.2f} - ${self.last_optimization.upper_price:,.2f} if self.last_optimization else 'N/A'
+- Grid range: {f"${self.last_optimization.lower_price:,.2f} - ${self.last_optimization.upper_price:,.2f}" if self.last_optimization else 'N/A'}
 """
         
         prompt = f"""Review this grid trading position and market state:
