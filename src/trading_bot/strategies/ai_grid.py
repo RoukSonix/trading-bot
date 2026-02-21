@@ -28,7 +28,7 @@ class AIGridConfig(GridConfig):
     
     # AI settings
     ai_enabled: bool = True
-    ai_required_for_start: bool = True   # If False, start even if AI says no
+    require_ai_approval: bool = True     # If False, start even without AI approval
     ai_confirm_signals: bool = False     # Don't confirm every signal (too slow)
     ai_auto_optimize: bool = True        # Auto-optimize grid parameters on setup
     ai_periodic_review: bool = True      # Periodic AI review of position/market
@@ -102,10 +102,10 @@ class AIGridStrategy(GridStrategy):
         ai_approved = self.last_analysis.grid_recommended
         
         if not ai_approved:
-            if self.ai_config.ai_required_for_start:
+            if self.ai_config.require_ai_approval:
                 return False, f"AI does not recommend grid trading: {self.last_analysis.reasoning[:100]}"
             else:
-                logger.warning(f"⚠️ AI does not recommend trading, but ai_required_for_start=False")
+                logger.warning(f"⚠️ AI does not recommend trading, but require_ai_approval=False")
                 logger.warning(f"   Reason: {self.last_analysis.reasoning[:100]}")
                 logger.info("Continuing with default grid setup (AI will still do periodic reviews)...")
                 # Use default grid when AI doesn't approve

@@ -24,7 +24,7 @@ async def main():
             amount_per_level=0.0001,
             # AI settings
             ai_enabled=True,
-            ai_required_for_start=False,  # Start even if AI says no
+            require_ai_approval=False,    # Start even without AI approval
             ai_confirm_signals=False,
             ai_auto_optimize=False,       # Use default grid (AI didn't approve)
             ai_periodic_review=True,      # But keep monitoring
