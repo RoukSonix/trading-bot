@@ -94,13 +94,9 @@ class TradingAgent:
             default_headers={
                 "HTTP-Referer": "https://github.com/trading-bot",
                 "X-Title": "Trading Bot",
-                # Disable OpenRouter fallbacks via header (more reliable than extra_body)
+                # Disable OpenRouter fallbacks via header
+                # See: https://openrouter.ai/docs#provider-routing
                 "X-Provider-Preferences": '{"allow_fallbacks":false}',
-            },
-            model_kwargs={
-                "provider": {
-                    "allow_fallbacks": False,  # Also try via model_kwargs
-                },
             },
         )
         logger.info(f"AI Agent initialized with model: {settings.openrouter_model}")
