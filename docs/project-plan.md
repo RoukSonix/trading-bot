@@ -451,67 +451,174 @@ trading-bots/
 
 ---
 
-### Sprint 17: Polymarket Bot ⬜ FUTURE
-**Goal:** Бот для prediction markets
-**Priority:** FUTURE — после monorepo
+---
 
-**Стратегии:**
-- Market Making (bid/ask spread, 1-3% monthly)
-- Sum-to-One Arbitrage (YES + NO < $1)
-- Weather Arbitrage (NOAA vs market)
-- AI Probability (news → probability mispricing)
+## 🚀 NautilusTrader Migration (Priority Path)
+
+> **Решение:** Используем NautilusTrader как основную платформу для всех ботов.
+> Это production-grade решение с Rust core, готовыми адаптерами для Binance, Polymarket, Interactive Brokers.
+
+### Sprint 17: NautilusTrader Study & Setup ⬜ PLANNED
+**Goal:** Изучить NautilusTrader, настроить окружение
+**Priority:** HIGH
+**Reference:** `/Users/a.lazarev/CentricVoid/nautilus_trader`
 
 **Задачи:**
-- [ ] Polymarket CLOB API integration
-- [ ] Market making strategy
-- [ ] Arbitrage detection engine
-- [ ] Polygon blockchain integration
+- [ ] Изучить архитектуру NautilusTrader (docs, examples)
+- [ ] Установить nautilus_trader (`pip install nautilus_trader`)
+- [ ] Запустить example стратегии (EMA cross, etc.)
+- [ ] Понять Strategy class и event handlers
+- [ ] Изучить Binance adapter (spot, futures)
+- [ ] Запустить backtest на исторических данных
+
+**Документация:**
+- https://nautilustrader.io/docs/
+- `examples/backtest/` — примеры бэктестов
+- `examples/live/binance/` — live trading примеры
 
 ---
 
-### Sprint 18: Stocks Bot ⬜ FUTURE
-**Goal:** Бот для торговли акциями
-**Priority:** FUTURE — после стабилизации crypto
+### Sprint 18: Grid Strategy on NautilusTrader ⬜ PLANNED
+**Goal:** Переписать нашу Grid стратегию на NautilusTrader
+**Priority:** HIGH
 
-**Data Sources:**
-- Yahoo Finance (free)
-- Alpha Vantage (free tier)
-- IEX Cloud (paid)
+**Задачи:**
+- [ ] Создать `GridStrategy(Strategy)` class
+- [ ] Реализовать on_start (setup grid levels)
+- [ ] Реализовать on_bar (update grid)
+- [ ] Реализовать on_order_filled (opposite orders)
+- [ ] Добавить dynamic grid bounds
+- [ ] Backtest на SOL/USDT или BTC/USDT
+- [ ] Сравнить результаты с нашим текущим ботом
+
+**Reference:** Medium tutorial "NautilusTrader Grid Trading Strategy"
+
+---
+
+### Sprint 19: AI Integration with NautilusTrader ⬜ PLANNED
+**Goal:** Интегрировать наш AI layer в NautilusTrader стратегии
+**Priority:** HIGH
+
+**Архитектура:**
+```
+NautilusTrader Strategy
+    ↓ on_bar()
+AI Agent (LangChain)
+    ↓ analyze_market()
+Grid Optimization
+    ↓ 
+Order Management (NautilusTrader)
+```
+
+**Задачи:**
+- [ ] Создать AIGridStrategy с LLM integration
+- [ ] Periodic AI review (каждые N баров)
+- [ ] AI-based grid optimization
+- [ ] Sentiment analysis integration
+- [ ] Compare AI vs non-AI performance
+
+---
+
+### Sprint 20: Binance Live Trading (NautilusTrader) ⬜ PLANNED
+**Goal:** Live trading на Binance через NautilusTrader
+**Priority:** HIGH
+
+**Задачи:**
+- [ ] Настроить Binance credentials
+- [ ] Testnet → Mainnet migration
+- [ ] Paper trading validation
+- [ ] Small capital live test ($50-100)
+- [ ] Monitoring & alerts
+- [ ] Emergency stop mechanism
+
+---
+
+### Sprint 21: Polymarket Bot (NautilusTrader) ⬜ PLANNED
+**Goal:** Бот для Polymarket используя готовый adapter
+**Priority:** MEDIUM
+**Reference:** `/Users/a.lazarev/CentricVoid/nautilus_trader/docs/integrations/polymarket.md`
+
+**Преимущества NautilusTrader:**
+- ✅ Готовый PolymarketDataClient
+- ✅ Готовый PolymarketExecutionClient
+- ✅ USDC.e Polygon integration
+- ✅ Signature types (EOA, Magic, Browser)
+
+**Стратегии:**
+- Market Making (bid/ask spread)
+- Sum-to-One Arbitrage
+- AI Probability mispricing
+
+**Задачи:**
+- [ ] Настроить Polygon wallet
+- [ ] Set allowances для Polymarket contracts
+- [ ] Создать PolymarketMarketMaker strategy
+- [ ] Backtest на исторических данных
+- [ ] Paper trading → Live
+
+---
+
+### Sprint 22: Stocks Bot (Interactive Brokers) ⬜ FUTURE
+**Goal:** Бот для торговли акциями через IB
+**Priority:** FUTURE
+**Reference:** `/Users/a.lazarev/CentricVoid/nautilus_trader/docs/integrations/ib.md`
+
+**Преимущества NautilusTrader:**
+- ✅ Готовый IB adapter
+- ✅ Stocks, Options, Futures support
+- ✅ Multi-venue routing
 
 **Стратегии:**
 - Multi-factor stock selection
 - Momentum trading
-- Value investing
 - Sector rotation
 
 **Задачи:**
-- [ ] Yahoo Finance integration
-- [ ] Factor-based stock screening
+- [ ] IB account setup
+- [ ] Factor-based screening
 - [ ] Portfolio optimization
 - [ ] Rebalancing logic
 
 ---
 
-### Sprint 19: C++ High-Performance Engine ⬜ FUTURE
-**Goal:** Low-latency execution engine
-**Priority:** FUTURE — когда понадобится HFT
-**Reference:** `/Users/a.lazarev/CentricVoid/QuantMuse/backend/`
+### Sprint 23: Rust Core Performance ⬜ FUTURE
+**Goal:** Максимальная производительность через Rust
+**Priority:** FUTURE — когда нужен HFT
 
-**Компоненты:**
-- Order execution (<1ms latency)
-- Risk management engine
-- Portfolio calculations
-- Data loading & caching
+**NautilusTrader уже имеет:**
+- Rust core (<1ms latency)
+- tokio async networking
+- Redis state persistence
+- Nanosecond resolution
 
 **Задачи:**
-- [ ] Study QuantMuse C++ backend
-- [ ] CMake build system
-- [ ] Python bindings (pybind11)
-- [ ] Benchmark vs pure Python
+- [ ] Profile current performance
+- [ ] Optimize hot paths
+- [ ] Custom Rust components (если нужно)
+- [ ] Benchmark vs competitors
 
 ---
 
 ## Reference Projects
+
+### NautilusTrader (PRIMARY)
+**Location:** `/Users/a.lazarev/CentricVoid/nautilus_trader`
+**GitHub:** https://github.com/nautechsystems/nautilus_trader
+**Docs:** https://nautilustrader.io/docs/
+
+**Готовые адаптеры:**
+- ✅ Binance (Spot, USDT-M Futures, Coin-M)
+- ✅ Polymarket (prediction markets)
+- ✅ Interactive Brokers (stocks, options)
+- ✅ Bybit, OKX, Kraken, dYdX
+- ✅ Betfair (sports betting)
+
+**Ключевые модули:**
+- `nautilus_trader/adapters/binance/` — Binance integration
+- `nautilus_trader/adapters/polymarket/` — Polymarket integration
+- `nautilus_trader/adapters/interactive_brokers/` — IB integration
+- `nautilus_trader/trading/strategy.py` — Strategy base class
+- `examples/` — Примеры стратегий
 
 ### QuantMuse
 **Location:** `/Users/a.lazarev/CentricVoid/QuantMuse`
