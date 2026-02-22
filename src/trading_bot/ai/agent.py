@@ -94,10 +94,12 @@ class TradingAgent:
             default_headers={
                 "HTTP-Referer": "https://github.com/trading-bot",
                 "X-Title": "Trading Bot",
+                # Disable OpenRouter fallbacks via header (more reliable than extra_body)
+                "X-Provider-Preferences": '{"allow_fallbacks":false}',
             },
-            extra_body={
+            model_kwargs={
                 "provider": {
-                    "allow_fallbacks": False,  # Don't switch to other models/providers
+                    "allow_fallbacks": False,  # Also try via model_kwargs
                 },
             },
         )
