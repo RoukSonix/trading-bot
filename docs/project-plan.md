@@ -255,20 +255,24 @@
 - [x] Telegram alerts (alerts/)
 - [ ] Paper trading 24h test (ready to run)
 
-### Sprint 7: Risk Management ⬜ PLANNED
+### Sprint 7: Risk Management ✅ DONE
 **Goal:** Защита капитала и управление рисками
 **Priority:** HIGH — критично перед live trading
+**Completed:** 2026-02-28
 
 **Задачи:**
-- [ ] Position sizing (Kelly criterion / fixed %)
-- [ ] Stop-loss / take-profit per position
-- [ ] Daily loss limit (stop trading if exceeded)
-- [ ] Max drawdown protection
-- [ ] Correlation risk (multi-pair)
-- [ ] Risk metrics dashboard (console)
+- [x] Position sizing (Kelly criterion / fixed % / ATR-based)
+- [x] Stop-loss / take-profit per position
+- [x] Daily loss limit (stop trading if exceeded)
+- [x] Max drawdown protection
+- [x] Risk metrics dashboard (Sharpe, Sortino, Calmar, Profit Factor)
+- [ ] Correlation risk (multi-pair) — deferred to multi-pair trading
 
-**Почему важно:** Без risk management даже прибыльная стратегия может обнулить счёт на одном плохом дне.
-
+**Модули:**
+- `risk/position_sizer.py` — PositionSizer (Kelly, fixed %, ATR)
+- `risk/stop_loss.py` — StopLossManager (SL/TP, trailing)
+- `risk/limits.py` — RiskLimits (daily loss, max DD)
+- `risk/metrics.py` — RiskMetrics (Sharpe, Sortino, etc.)
 ---
 
 ### Sprint 8: Live Trading Preparation ⬜ PLANNED
