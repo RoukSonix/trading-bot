@@ -19,6 +19,7 @@ from trading_bot.config import settings
 from trading_bot.core.exchange import exchange_client
 from trading_bot.core.indicators import Indicators
 from trading_bot.strategies import AIGridStrategy, AIGridConfig
+from trading_bot.risk import PositionSizer, SizingMethod, RiskLimits, RiskMetrics, StopLossManager
 
 
 class BotState(str, Enum):
@@ -64,6 +65,24 @@ class TradingBot:
         self.start_time: Optional[datetime] = None
         self.ticks = 0
         self.errors = 0
+        
+        # Risk Management
+        self.position_sizer = PositionSizer(
+            method=SizingMethod.FIXED_PERCENT,
+            risk_per_trade=0.02,  # 2% per trade
+            max_position_pct=0.10,  # Max 10% in one position
+        )
+        self.risk_limits = RiskLimits(
+            daily_loss_limit=0.05,  # 5% max daily loss
+            max_drawdown_limit=0.10,  # 10% max drawdown
+            max_consecutive_losses=5,
+        )
+        self.risk_metrics = RiskMetrics()
+        self.stop_loss_mgr = StopLossManager(
+            default_stop_pct=0.02,
+            default_tp_pct=0.03,
+            use_trailing=False,
+        )
     
     def setup_logging(self):
         """Configure logging."""
@@ -102,6 +121,11 @@ class TradingBot:
         exchange_client.connect()
         
         # Initialize strategy
+        initial_balance = 10000.0  # Paper trading balance
+        self.risk_limits.set_initial_balance(initial_balance)
+        self.risk_metrics.initial_balance = initial_balance
+        self.risk_metrics.update_equity(initial_balance)
+        
         self.strategy = AIGridStrategy(symbol=self.symbol, config=self.config)
         
         # Initial market check
@@ -246,7 +270,16 @@ class TradingBot:
             await self._check_entry_conditions()
     
     async def _execute_trading(self, current_price: float):
-        """Execute grid trading logic."""
+        """Execute grid trading logic with risk management."""
+        # Check if trading is allowed
+        can_trade, reason = self.risk_limits.can_trade()
+        if not can_trade:
+            if self.state == BotState.TRADING:
+                logger.warning(f"🛑 Trading halted: {reason}")
+                self.state = BotState.PAUSED
+                await self._send_alert("🔴 Risk limit breached", reason)
+            return
+        
         data = await self._fetch_market_data()
         
         signals = self.strategy.calculate_signals(
@@ -257,6 +290,23 @@ class TradingBot:
         for signal in signals:
             trade = self.strategy.execute_paper_trade(signal)
             if trade["status"] == "filled":
+                # Calculate PnL for this trade (simplified for grid)
+                pnl = 0  # Grid trades are part of a series, PnL calculated on completion
+                
+                # Record trade in risk metrics
+                self.risk_limits.record_trade(pnl, {
+                    "symbol": self.symbol,
+                    "side": signal.type.value,
+                    "price": signal.price,
+                    "amount": signal.amount,
+                })
+                
+                # Update equity curve
+                paper_status = self.strategy.get_status().get("paper_trading", {})
+                total_value = paper_status.get("total_value", 10000)
+                self.risk_limits.update_balance(total_value)
+                self.risk_metrics.update_equity(total_value)
+                
                 logger.info(
                     f"⚡ {signal.type.value.upper()} "
                     f"{signal.amount:.6f} @ ${signal.price:,.2f}"
@@ -355,6 +405,23 @@ class TradingBot:
         profit_pct = (profit / 10000) * 100
         logger.info(f"Profit: ${profit:+,.2f} ({profit_pct:+.2f}%)")
         logger.info("=" * 60)
+        
+        # Risk metrics summary
+        if self.risk_metrics.total_trades > 0:
+            logger.info("")
+            self.risk_metrics.print_dashboard()
+        
+        # Daily risk summary
+        daily = self.risk_limits.get_daily_summary()
+        if daily:
+            logger.info("")
+            logger.info("📊 DAILY RISK SUMMARY")
+            logger.info(f"  Daily Return: {daily.get('daily_return', 'N/A')}")
+            logger.info(f"  Max Drawdown: {daily.get('max_drawdown', 'N/A')}")
+            logger.info(f"  Win Rate: {daily.get('win_rate', 'N/A')}")
+            logger.info(f"  Consecutive Losses: {daily.get('consecutive_losses', 0)}")
+            if daily.get('trading_halted'):
+                logger.warning(f"  ⚠️ Trading was halted: {daily.get('halt_reason', '')}")
 
 
 async def run_bot():
