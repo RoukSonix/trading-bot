@@ -1,5 +1,6 @@
 """Streamlit dashboard for trading bot monitoring."""
 
+import os
 import streamlit as st
 import requests
 from datetime import datetime
@@ -8,7 +9,7 @@ import time
 from trading_bot.dashboard.components import GridVisualization, PnLChart, TradeTable
 
 # Configuration
-API_BASE_URL = "http://localhost:8000"
+API_BASE_URL = os.getenv("API_URL", "http://localhost:8000")
 
 
 def fetch_api(endpoint: str, method: str = "GET", **kwargs):
