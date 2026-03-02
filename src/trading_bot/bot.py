@@ -21,6 +21,7 @@ from trading_bot.core.indicators import Indicators
 from trading_bot.strategies import AIGridStrategy, AIGridConfig
 from trading_bot.risk import PositionSizer, SizingMethod, RiskLimits, RiskMetrics, StopLossManager
 from trading_bot.core.emergency import EmergencyStop
+from trading_bot.core.state import BotState as SharedBotState, write_state, read_state
 
 
 class BotState(str, Enum):
@@ -150,6 +151,10 @@ class TradingBot:
         logger.info("")
         logger.info("🛑 Stopping bot...")
         self.running = False
+        
+        # Write stopped state
+        self._write_shared_state()
+        
         self._print_stats()
     
     async def _check_entry_conditions(self):
@@ -230,6 +235,9 @@ class TradingBot:
             try:
                 self.ticks += 1
                 
+                # Write shared state for API
+                self._write_shared_state(current_price=None)
+                
                 # Check emergency stop
                 if self.emergency_stop.is_triggered:
                     logger.critical("🚨 Emergency stop detected - initiating shutdown")
@@ -239,6 +247,9 @@ class TradingBot:
                 # Fetch current price
                 ticker = exchange_client.get_ticker(self.symbol)
                 current_price = ticker["last"]
+                
+                # Update shared state with current price
+                self._write_shared_state(current_price)
                 
                 # State-dependent behavior
                 if self.state == BotState.WAITING:
@@ -432,6 +443,61 @@ class TradingBot:
             logger.info(f"  Consecutive Losses: {daily.get('consecutive_losses', 0)}")
             if daily.get('trading_halted'):
                 logger.warning(f"  ⚠️ Trading was halted: {daily.get('halt_reason', '')}")
+
+    def _write_shared_state(self, current_price: Optional[float] = None):
+        """Write bot state to shared file for API access."""
+        try:
+            uptime = None
+            if self.start_time:
+                uptime = (datetime.now() - self.start_time).total_seconds()
+            
+            # Get grid levels
+            grid_levels = []
+            center_price = None
+            if self.strategy:
+                center_price = self.strategy.center_price
+                for level in self.strategy.levels:
+                    grid_levels.append({
+                        "price": level.price,
+                        "side": level.side.value,
+                        "amount": level.amount,
+                        "filled": level.filled,
+                        "order_id": level.order_id,
+                    })
+            
+            # Get paper trading stats
+            paper_balance = 10000.0
+            paper_holdings = 0.0
+            paper_total = 10000.0
+            paper_trades = 0
+            if self.strategy:
+                status = self.strategy.get_status()
+                paper = status.get("paper_trading", {})
+                paper_balance = paper.get("balance_usdt", 10000.0)
+                paper_holdings = paper.get("holdings_btc", 0.0)
+                paper_total = paper.get("total_value", 10000.0)
+                paper_trades = paper.get("trades_count", 0)
+            
+            state = SharedBotState(
+                status="running" if self.running else "stopped",
+                state=self.state.value,
+                symbol=self.symbol,
+                uptime_seconds=uptime,
+                ticks=self.ticks,
+                errors=self.errors,
+                current_price=current_price,
+                center_price=center_price,
+                grid_levels=grid_levels,
+                positions=[],
+                paper_balance_usdt=paper_balance,
+                paper_holdings_btc=paper_holdings,
+                paper_total_value=paper_total,
+                paper_trades_count=paper_trades,
+            )
+            
+            write_state(state)
+        except Exception as e:
+            logger.debug(f"Failed to write shared state: {e}")
 
 
     async def _handle_emergency_stop(self):

@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from trading_bot.api.routes import trades_router, positions_router, bot_router
 from trading_bot.core.database import init_db
+from trading_bot.core.state import read_state, BotState as SharedBotState
 
 
 @asynccontextmanager
@@ -90,7 +91,23 @@ def get_bot_instance():
 
 @app.get("/api/status", response_model=StatusResponse)
 async def get_status():
-    """Get current bot status."""
+    """Get current bot status from shared state file."""
+    # Try reading from shared state file first (works in Docker)
+    state = read_state()
+    
+    if state is not None:
+        return StatusResponse(
+            status=state.status,
+            state=state.state,
+            symbol=state.symbol,
+            uptime_seconds=state.uptime_seconds,
+            ticks=state.ticks,
+            errors=state.errors,
+            current_price=state.current_price,
+            timestamp=datetime.fromisoformat(state.timestamp) if isinstance(state.timestamp, str) else state.timestamp,
+        )
+    
+    # Fallback to in-process bot instance (local dev)
     bot = get_bot_instance()
     
     if bot is None:
@@ -125,7 +142,29 @@ async def get_status():
 
 @app.get("/api/grid", response_model=GridResponse)
 async def get_grid():
-    """Get current grid levels."""
+    """Get current grid levels from shared state file."""
+    # Try reading from shared state file first (works in Docker)
+    state = read_state()
+    
+    if state is not None and state.grid_levels:
+        levels = []
+        for level in state.grid_levels:
+            levels.append(GridLevelResponse(
+                price=level.get("price", 0),
+                side=level.get("side", "buy"),
+                amount=level.get("amount", 0),
+                filled=level.get("filled", False),
+                order_id=level.get("order_id"),
+            ))
+        
+        return GridResponse(
+            center_price=state.center_price,
+            current_price=state.current_price,
+            levels=levels,
+            total_levels=len(levels),
+        )
+    
+    # Fallback to in-process bot instance (local dev)
     bot = get_bot_instance()
     
     if bot is None or bot.strategy is None:
@@ -150,10 +189,16 @@ async def get_grid():
     
     return GridResponse(
         center_price=strategy.center_price,
-        current_price=strategy.center_price,  # Updated by tick
+        current_price=strategy.center_price,
         levels=levels,
         total_levels=len(levels),
     )
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Docker."""
+    return {"status": "healthy"}
 
 
 if __name__ == "__main__":
