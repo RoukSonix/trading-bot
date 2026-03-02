@@ -20,6 +20,7 @@ from trading_bot.core.exchange import exchange_client
 from trading_bot.core.indicators import Indicators
 from trading_bot.strategies import AIGridStrategy, AIGridConfig
 from trading_bot.risk import PositionSizer, SizingMethod, RiskLimits, RiskMetrics, StopLossManager
+from trading_bot.core.emergency import EmergencyStop
 
 
 class BotState(str, Enum):
@@ -83,6 +84,9 @@ class TradingBot:
             default_tp_pct=0.03,
             use_trailing=False,
         )
+        
+        # Emergency Stop
+        self.emergency_stop = EmergencyStop()
     
     def setup_logging(self):
         """Configure logging."""
@@ -225,6 +229,12 @@ class TradingBot:
         while self.running:
             try:
                 self.ticks += 1
+                
+                # Check emergency stop
+                if self.emergency_stop.is_triggered:
+                    logger.critical("🚨 Emergency stop detected - initiating shutdown")
+                    await self._handle_emergency_stop()
+                    break
                 
                 # Fetch current price
                 ticker = exchange_client.get_ticker(self.symbol)
@@ -422,6 +432,39 @@ class TradingBot:
             logger.info(f"  Consecutive Losses: {daily.get('consecutive_losses', 0)}")
             if daily.get('trading_halted'):
                 logger.warning(f"  ⚠️ Trading was halted: {daily.get('halt_reason', '')}")
+
+
+    async def _handle_emergency_stop(self):
+        """Handle emergency stop - close positions and save state."""
+        logger.critical("🚨 EMERGENCY STOP HANDLER ACTIVATED")
+        
+        # Update emergency stop with current state
+        self.emergency_stop.exchange_client = exchange_client
+        self.emergency_stop.strategy = self.strategy
+        
+        # Close all positions
+        results = await self.emergency_stop.close_all_positions()
+        
+        if results["positions_closed"]:
+            logger.warning(f"Closed {len(results['positions_closed'])} positions")
+        if results["errors"]:
+            logger.error(f"Errors during position close: {results['errors']}")
+        
+        # Save state for recovery
+        self.emergency_stop.save_state({
+            "bot_state": self.state.value,
+            "ticks": self.ticks,
+            "errors": self.errors,
+            "close_results": results,
+        })
+        
+        # Set running to false
+        self.running = False
+        
+        # Print final stats
+        self._print_stats()
+        
+        logger.critical("🛑 Emergency stop complete - bot terminated")
 
 
 async def run_bot():

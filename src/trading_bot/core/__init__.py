@@ -1,30 +1,32 @@
-"""Core trading functionality."""
+"""Core trading bot modules."""
 
-from trading_bot.core.exchange import ExchangeClient, exchange_client
-from trading_bot.core.database import OHLCV, Trade, Position, init_db, get_session
-from trading_bot.core.data_collector import DataCollector, data_collector
-from trading_bot.core.indicators import Indicators, indicators
-from trading_bot.core.order_manager import OrderManager, Order, OrderStatus, OrderType, order_manager
-from trading_bot.core.position_manager import PositionManager, PositionInfo, position_manager
+from .exchange import exchange_client
+from .indicators import Indicators
+from .database import (
+    init_db,
+    get_session,
+    OHLCV,
+    Trade,
+    Position,
+    TradeLog,
+    log_trade,
+    get_trades,
+    get_trades_summary,
+)
+from .emergency import EmergencyStop, emergency_stop
 
 __all__ = [
-    "ExchangeClient",
     "exchange_client",
+    "Indicators",
+    "init_db",
+    "get_session",
     "OHLCV",
     "Trade",
     "Position",
-    "init_db",
-    "get_session",
-    "DataCollector",
-    "data_collector",
-    "Indicators",
-    "indicators",
-    "OrderManager",
-    "Order",
-    "OrderStatus",
-    "OrderType",
-    "order_manager",
-    "PositionManager",
-    "PositionInfo",
-    "position_manager",
+    "TradeLog",
+    "log_trade",
+    "get_trades",
+    "get_trades_summary",
+    "EmergencyStop",
+    "emergency_stop",
 ]
