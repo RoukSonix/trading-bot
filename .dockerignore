@@ -1,0 +1,68 @@
+# =============================================================================
+# Docker Ignore - Trading Bot
+# =============================================================================
+
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv
+env
+ENV
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.pytest_cache
+.coverage
+htmlcov
+.tox
+.nox
+
+# Build
+build
+dist
+*.egg-info
+.eggs
+
+# Logs (use volumes instead)
+logs/
+*.log
+
+# Local data (use volumes instead)
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Old docker files
+docker/
+
+# Misc
+*.bak
+*.tmp
+*.temp
+Makefile

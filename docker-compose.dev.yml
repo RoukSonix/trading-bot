@@ -1,0 +1,74 @@
+# =============================================================================
+# Trading Bot - Docker Compose (Development)
+# =============================================================================
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # API with hot reload
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production  # Use base production for dev overrides
+    command: >
+      python -m uvicorn trading_bot.api.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /app/src
+    volumes:
+      - ./src:/app/src:cached
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./scripts:/app/scripts:cached
+    environment:
+      - LOG_LEVEL=DEBUG
+      - PYTHONPATH=/app/src
+      - DEBUG=1
+
+  # ---------------------------------------------------------------------------
+  # Dashboard with hot reload
+  # ---------------------------------------------------------------------------
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    command: >
+      python -m streamlit run
+      src/trading_bot/dashboard/app.py
+      --server.port 8501
+      --server.address 0.0.0.0
+      --server.headless true
+      --server.runOnSave true
+      --browser.gatherUsageStats false
+    volumes:
+      - ./src:/app/src:cached
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=DEBUG
+      - API_URL=http://api:8000
+      - DEBUG=1
+
+  # ---------------------------------------------------------------------------
+  # Bot with debug mode
+  # ---------------------------------------------------------------------------
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    command: python -m trading_bot.main
+    volumes:
+      - ./src:/app/src:cached
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./scripts:/app/scripts:cached
+    environment:
+      - LOG_LEVEL=DEBUG
+      - TRADING_MODE=paper
+      - DEBUG=1
