@@ -35,7 +35,7 @@ FROM base AS production
 WORKDIR /app
 
 # Copy source code
-COPY --chown=appuser:appuser pyproject.toml ./
+COPY --chown=appuser:appuser pyproject.toml README.md ./
 COPY --chown=appuser:appuser src/ ./src/
 COPY --chown=appuser:appuser scripts/ ./scripts/
 
