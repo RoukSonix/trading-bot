@@ -196,7 +196,7 @@ class CandlestickChart:
         
         fig.update_yaxes(title_text="Price ($)", row=1, col=1)
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     
     def _calculate_rsi(self, prices: pd.Series, period: int = 14) -> pd.Series:
         """Calculate RSI indicator."""
@@ -242,4 +242,4 @@ class CandlestickChart:
             yaxis=dict(visible=False),
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")

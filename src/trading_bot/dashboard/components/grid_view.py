@@ -106,7 +106,7 @@ class GridVisualization:
             margin=dict(l=50, r=50, t=30, b=50),
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
         
         # Summary metrics
         col1, col2, col3, col4 = st.columns(4)

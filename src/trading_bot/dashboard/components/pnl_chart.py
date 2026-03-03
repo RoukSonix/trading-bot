@@ -74,7 +74,7 @@ class PnLChart:
             showlegend=False,
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     
     def render_daily(
         self,
@@ -127,7 +127,7 @@ class PnLChart:
             margin=dict(l=50, r=50, t=30, b=50),
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     
     def render_summary(self, pnl_summary: dict):
         """Render PnL summary metrics.
