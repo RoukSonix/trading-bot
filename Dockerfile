@@ -89,4 +89,4 @@ CMD ["python", "-m", "streamlit", "run", \
 # -----------------------------------------------------------------------------
 FROM production AS bot
 
-CMD ["python", "-m", "trading_bot.main"]
+CMD ["python", "scripts/run_paper_trading.py"]
