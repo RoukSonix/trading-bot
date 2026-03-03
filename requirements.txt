@@ -30,3 +30,7 @@ ruff>=0.8.0
 mypy>=1.14.0
 pre-commit>=4.0.0
 black>=24.0.0
+
+# Alerts (Sprint 11)
+aiosmtplib>=3.0.0
+aiohttp>=3.9.0

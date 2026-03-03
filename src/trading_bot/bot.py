@@ -22,6 +22,13 @@ from trading_bot.strategies import AIGridStrategy, AIGridConfig
 from trading_bot.risk import PositionSizer, SizingMethod, RiskLimits, RiskMetrics, StopLossManager
 from trading_bot.core.emergency import EmergencyStop
 from trading_bot.core.state import BotState as SharedBotState, write_state, read_state
+from trading_bot.alerts import (
+    AlertManager,
+    AlertConfig,
+    AlertLevel,
+    get_alert_manager,
+    get_rules_engine,
+)
 
 
 class BotState(str, Enum):
@@ -88,6 +95,22 @@ class TradingBot:
         
         # Emergency Stop
         self.emergency_stop = EmergencyStop()
+        
+        # Alert Manager
+        alert_config = AlertConfig(
+            alerts_enabled=settings.alerts_enabled,
+            discord_enabled=settings.discord_enabled,
+            email_enabled=settings.email_enabled,
+            alert_on_trade=settings.alert_on_trade,
+            alert_on_error=settings.alert_on_error,
+            daily_summary_enabled=settings.daily_summary_enabled,
+            daily_summary_time=settings.daily_summary_time,
+        )
+        self.alert_manager = get_alert_manager(alert_config)
+        
+        # Alert Rules Engine
+        self.rules_engine = get_rules_engine()
+        self.rules_engine.set_alert_callback(self._handle_rule_alert)
     
     def setup_logging(self):
         """Configure logging."""
@@ -109,6 +132,45 @@ class TradingBot:
             format="{time:YYYY-MM-DD HH:mm:ss} | {level:<8} | {message}",
         )
     
+    async def _handle_rule_alert(self, title: str, message: str, level: str):
+        """Handle alerts from rules engine."""
+        alert_level = AlertLevel(level) if level in [l.value for l in AlertLevel] else AlertLevel.INFO
+        await self.alert_manager.send_custom_alert(
+            title=title,
+            message=message,
+            level=alert_level,
+        )
+    
+    async def _get_daily_summary_data(self) -> dict:
+        """Get data for daily summary callback."""
+        if not self.strategy:
+            return {}
+        
+        status = self.strategy.get_status()
+        paper = status.get("paper_trading", {})
+        
+        # Calculate stats
+        start_balance = 10000.0  # Initial balance
+        end_balance = paper.get("total_value", 10000.0)
+        total_trades = paper.get("trades_count", 0)
+        
+        # Get from risk metrics if available
+        winning_trades = getattr(self.risk_metrics, 'winning_trades', 0)
+        losing_trades = getattr(self.risk_metrics, 'losing_trades', 0)
+        total_pnl = end_balance - start_balance
+        max_drawdown = getattr(self.risk_metrics, 'max_drawdown', 0) * 100
+        
+        return {
+            "symbol": self.symbol,
+            "start_balance": start_balance,
+            "end_balance": end_balance,
+            "total_trades": total_trades,
+            "winning_trades": winning_trades,
+            "losing_trades": losing_trades,
+            "total_pnl": total_pnl,
+            "max_drawdown": max_drawdown,
+        }
+    
     async def start(self):
         """Start the trading bot."""
         self.setup_logging()
@@ -119,6 +181,7 @@ class TradingBot:
         logger.info(f"Symbol: {self.symbol}")
         logger.info(f"Environment: {settings.binance_env.value}")
         logger.info(f"AI Model: {settings.openrouter_model}")
+        logger.info(f"Alerts: Discord={settings.discord_enabled}, Email={settings.email_enabled}")
         logger.info("")
         
         # Connect to exchange
@@ -131,7 +194,14 @@ class TradingBot:
         self.risk_metrics.initial_balance = initial_balance
         self.risk_metrics.update_equity(initial_balance)
         
+        # Initialize rules engine
+        self.rules_engine.reset_daily_stats(initial_balance)
+        
         self.strategy = AIGridStrategy(symbol=self.symbol, config=self.config)
+        
+        # Start daily summary scheduler
+        if settings.daily_summary_enabled:
+            self.alert_manager.start_daily_summary_scheduler(self._get_daily_summary_data)
         
         # Initial market check
         await self._check_entry_conditions()
@@ -139,6 +209,17 @@ class TradingBot:
         # Start main loop
         self.running = True
         self.start_time = datetime.now()
+        
+        # Send startup alert
+        ticker = exchange_client.get_ticker(self.symbol)
+        await self.alert_manager.send_status_alert(
+            status="started",
+            symbol=self.symbol,
+            current_price=ticker["last"],
+            total_value=initial_balance,
+            trades_count=0,
+            reason=f"Environment: {settings.binance_env.value}",
+        )
         
         logger.info("")
         logger.info(f"🚀 Bot started in {self.state.value.upper()} mode. Press Ctrl+C to stop.")
@@ -152,6 +233,25 @@ class TradingBot:
         logger.info("🛑 Stopping bot...")
         self.running = False
         
+        # Get final stats
+        status = self.strategy.get_status() if self.strategy else {}
+        paper = status.get("paper_trading", {})
+        
+        # Send stop alert
+        await self.alert_manager.send_status_alert(
+            status="stopped",
+            symbol=self.symbol,
+            total_value=paper.get("total_value", 10000),
+            trades_count=paper.get("trades_count", 0),
+            reason="Graceful shutdown",
+        )
+        
+        # Stop daily summary scheduler
+        self.alert_manager.stop_daily_summary_scheduler()
+        
+        # Close alert manager
+        await self.alert_manager.close()
+        
         # Write stopped state
         self._write_shared_state()
         
@@ -162,6 +262,10 @@ class TradingBot:
         logger.info("🔍 Checking market entry conditions...")
         
         data = await self._fetch_market_data()
+        
+        # Update rules engine with price
+        self.rules_engine.update_price(data["price"])
+        self.rules_engine.update_connection()
         
         should_trade, reason = await self.strategy.analyze_and_setup(
             current_price=data["price"],
@@ -180,15 +284,28 @@ class TradingBot:
             if self.state != BotState.TRADING:
                 logger.info(f"✅ Market conditions good: {reason}")
                 logger.info("📈 Switching to TRADING mode")
+                old_state = self.state
                 self.state = BotState.TRADING
                 self.strategy.print_grid()
-                await self._send_alert("🟢 Started trading", reason)
+                
+                await self.alert_manager.send_status_alert(
+                    status="trading",
+                    symbol=self.symbol,
+                    current_price=data["price"],
+                    reason=reason,
+                )
         else:
             if self.state == BotState.TRADING:
                 logger.warning(f"⚠️ Market conditions changed: {reason}")
                 logger.info("⏸️ Switching to WAITING mode")
                 self.state = BotState.WAITING
-                await self._send_alert("🟡 Paused trading", reason)
+                
+                await self.alert_manager.send_status_alert(
+                    status="waiting",
+                    symbol=self.symbol,
+                    current_price=data["price"],
+                    reason=reason,
+                )
             else:
                 logger.info(f"⏳ Still waiting: {reason[:80]}...")
         
@@ -230,10 +347,12 @@ class TradingBot:
     async def _main_loop(self):
         """Main trading loop with state management."""
         tick_interval = 5  # seconds between price checks
+        rules_check_counter = 0
         
         while self.running:
             try:
                 self.ticks += 1
+                rules_check_counter += 1
                 
                 # Write shared state for API
                 self._write_shared_state(current_price=None)
@@ -248,8 +367,19 @@ class TradingBot:
                 ticker = exchange_client.get_ticker(self.symbol)
                 current_price = ticker["last"]
                 
+                # Update rules engine with price
+                self.rules_engine.update_price(current_price)
+                self.rules_engine.update_connection()
+                
                 # Update shared state with current price
                 self._write_shared_state(current_price)
+                
+                # Evaluate alert rules every 12 ticks (~1 minute)
+                if rules_check_counter >= 12:
+                    rules_check_counter = 0
+                    triggered = await self.rules_engine.evaluate_all()
+                    if triggered:
+                        logger.info(f"📢 {len(triggered)} alert rule(s) triggered")
                 
                 # State-dependent behavior
                 if self.state == BotState.WAITING:
@@ -279,6 +409,15 @@ class TradingBot:
             except Exception as e:
                 self.errors += 1
                 logger.error(f"Error in main loop: {e}")
+                
+                # Send error alert
+                await self.alert_manager.send_error_alert(
+                    error=str(e),
+                    context="Main trading loop",
+                    exc=e,
+                    level=AlertLevel.ERROR,
+                )
+                
                 await asyncio.sleep(tick_interval * 2)
     
     async def _maybe_check_entry(self, current_price: float):
@@ -298,7 +437,13 @@ class TradingBot:
             if self.state == BotState.TRADING:
                 logger.warning(f"🛑 Trading halted: {reason}")
                 self.state = BotState.PAUSED
-                await self._send_alert("🔴 Risk limit breached", reason)
+                
+                await self.alert_manager.send_status_alert(
+                    status="paused",
+                    symbol=self.symbol,
+                    current_price=current_price,
+                    reason=f"Risk limit: {reason}",
+                )
             return
         
         data = await self._fetch_market_data()
@@ -322,19 +467,30 @@ class TradingBot:
                     "amount": signal.amount,
                 })
                 
+                # Record trade in rules engine
+                self.rules_engine.record_trade(pnl)
+                
                 # Update equity curve
                 paper_status = self.strategy.get_status().get("paper_trading", {})
                 total_value = paper_status.get("total_value", 10000)
                 self.risk_limits.update_balance(total_value)
                 self.risk_metrics.update_equity(total_value)
                 
+                # Update rules engine PnL
+                self.rules_engine.set_pnl(total_value - 10000)
+                
                 logger.info(
                     f"⚡ {signal.type.value.upper()} "
                     f"{signal.amount:.6f} @ ${signal.price:,.2f}"
                 )
-                await self._send_alert(
-                    f"Trade: {signal.type.value.upper()} "
-                    f"{signal.amount:.6f} @ ${signal.price:,.2f}"
+                
+                # Send trade alert
+                await self.alert_manager.send_trade_alert(
+                    symbol=self.symbol,
+                    side=signal.type.value,
+                    price=signal.price,
+                    amount=signal.amount,
+                    pnl=pnl if pnl != 0 else None,
                 )
     
     async def _maybe_ai_review(self, current_price: float):
@@ -364,19 +520,27 @@ class TradingBot:
         if review["action"] == "STOP":
             logger.warning(f"🛑 AI says STOP: {review['reason']}")
             self.state = BotState.WAITING
-            await self._send_alert("🔴 AI stopped trading", review["reason"])
+            
+            await self.alert_manager.send_status_alert(
+                status="stopped",
+                symbol=self.symbol,
+                current_price=current_price,
+                reason=f"AI decision: {review['reason']}",
+            )
             
         elif review["action"] == "PAUSE":
             logger.warning(f"⏸️ AI says PAUSE: {review['reason']}")
             self.state = BotState.PAUSED
-            await self._send_alert("🟡 AI paused trading", review["reason"])
+            
+            await self.alert_manager.send_status_alert(
+                status="paused",
+                symbol=self.symbol,
+                current_price=current_price,
+                reason=f"AI decision: {review['reason']}",
+            )
             
         elif review["action"] == "ADJUST":
             logger.info(f"🔧 AI adjusted grid: {review['reason']}")
-    
-    async def _send_alert(self, title: str, message: str = ""):
-        """Send alert (placeholder for Telegram)."""
-        logger.info(f"📢 Alert: {title} - {message[:50]}...")
     
     def _print_status(self, current_price: float):
         """Print current status."""
@@ -443,6 +607,13 @@ class TradingBot:
             logger.info(f"  Consecutive Losses: {daily.get('consecutive_losses', 0)}")
             if daily.get('trading_halted'):
                 logger.warning(f"  ⚠️ Trading was halted: {daily.get('halt_reason', '')}")
+        
+        # Alert stats
+        alert_stats = self.alert_manager.get_stats()
+        logger.info("")
+        logger.info("📢 ALERT STATISTICS")
+        logger.info(f"  Alerts Sent: {alert_stats['alerts_sent']}")
+        logger.info(f"  Alerts Blocked (rate limit): {alert_stats['alerts_blocked']}")
 
     def _write_shared_state(self, current_price: Optional[float] = None):
         """Write bot state to shared file for API access."""
@@ -504,6 +675,13 @@ class TradingBot:
         """Handle emergency stop - close positions and save state."""
         logger.critical("🚨 EMERGENCY STOP HANDLER ACTIVATED")
         
+        # Send emergency alert
+        await self.alert_manager.send_status_alert(
+            status="emergency",
+            symbol=self.symbol,
+            reason="Emergency stop triggered",
+        )
+        
         # Update emergency stop with current state
         self.emergency_stop.exchange_client = exchange_client
         self.emergency_stop.strategy = self.strategy
@@ -515,6 +693,13 @@ class TradingBot:
             logger.warning(f"Closed {len(results['positions_closed'])} positions")
         if results["errors"]:
             logger.error(f"Errors during position close: {results['errors']}")
+            
+            # Send error alert
+            await self.alert_manager.send_error_alert(
+                error=f"Emergency stop errors: {results['errors']}",
+                context="Emergency position close",
+                level=AlertLevel.CRITICAL,
+            )
         
         # Save state for recovery
         self.emergency_stop.save_state({
@@ -526,6 +711,12 @@ class TradingBot:
         
         # Set running to false
         self.running = False
+        
+        # Stop daily summary scheduler
+        self.alert_manager.stop_daily_summary_scheduler()
+        
+        # Close alert manager
+        await self.alert_manager.close()
         
         # Print final stats
         self._print_stats()

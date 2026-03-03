@@ -72,6 +72,64 @@ class Settings(BaseSettings):
         description="Telegram chat ID for alerts"
     )
     
+    # Discord Alerts
+    discord_webhook_url: str = Field(
+        default="",
+        description="Discord webhook URL for alerts"
+    )
+    
+    # Email Alerts
+    smtp_host: str = Field(
+        default="smtp.gmail.com",
+        description="SMTP server host"
+    )
+    smtp_port: int = Field(
+        default=587,
+        description="SMTP server port"
+    )
+    smtp_user: str = Field(
+        default="",
+        description="SMTP username (email)"
+    )
+    smtp_pass: str = Field(
+        default="",
+        description="SMTP password or app password"
+    )
+    alert_email: str = Field(
+        default="",
+        description="Email address to send alerts to"
+    )
+    
+    # Alert Settings
+    alerts_enabled: bool = Field(
+        default=True,
+        description="Enable/disable all alerts"
+    )
+    discord_enabled: bool = Field(
+        default=True,
+        description="Enable Discord alerts"
+    )
+    email_enabled: bool = Field(
+        default=False,
+        description="Enable email alerts"
+    )
+    alert_on_trade: bool = Field(
+        default=True,
+        description="Send alert on each trade"
+    )
+    alert_on_error: bool = Field(
+        default=True,
+        description="Send alert on errors"
+    )
+    daily_summary_enabled: bool = Field(
+        default=True,
+        description="Send daily trading summary"
+    )
+    daily_summary_time: str = Field(
+        default="20:00",
+        description="Time to send daily summary (UTC, HH:MM format)"
+    )
+    
     # Logging
     log_level: str = Field(default="INFO", description="Logging level")
     
