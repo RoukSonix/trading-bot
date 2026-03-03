@@ -1,0 +1,58 @@
+# =============================================================================
+# Prometheus Configuration for Trading Bot
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: "trading-bot-monitor"
+
+# Alertmanager configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+# Rule files (optional)
+# rule_files:
+#   - "alert_rules.yml"
+
+scrape_configs:
+  # ---------------------------------------------------------------------------
+  # Prometheus self-monitoring
+  # ---------------------------------------------------------------------------
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+    metrics_path: /metrics
+    scheme: http
+
+  # ---------------------------------------------------------------------------
+  # Trading Bot API
+  # ---------------------------------------------------------------------------
+  - job_name: "trading-bot-api"
+    static_configs:
+      - targets: ["api:8000"]
+        labels:
+          service: "trading-bot"
+          component: "api"
+    metrics_path: /metrics
+    scheme: http
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # ---------------------------------------------------------------------------
+  # Trading Bot API (for local development without Docker)
+  # ---------------------------------------------------------------------------
+  - job_name: "trading-bot-api-local"
+    static_configs:
+      - targets: ["host.docker.internal:8000"]
+        labels:
+          service: "trading-bot"
+          component: "api-local"
+    metrics_path: /metrics
+    scheme: http
+    scrape_interval: 15s
+    scrape_timeout: 10s

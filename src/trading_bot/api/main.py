@@ -1,10 +1,13 @@
 """FastAPI application for trading bot dashboard."""
 
+import os
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -15,7 +18,8 @@ from trading_bot.api.routes import (
     orders_router,
     candles_router,
 )
-from trading_bot.core.database import init_db
+from sqlalchemy import text
+from trading_bot.core.database import init_db, engine as db_engine
 from trading_bot.core.state import read_state, BotState as SharedBotState
 from trading_bot.alerts import (
     AlertConfig,
@@ -23,6 +27,7 @@ from trading_bot.alerts import (
     get_alert_manager,
     get_rules_engine,
 )
+from trading_bot.monitoring import get_metrics, setup_metrics_endpoint
 
 
 @asynccontextmanager
@@ -30,6 +35,9 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
     init_db()
+    # Initialize metrics
+    metrics = get_metrics()
+    metrics.reset_start_time()
     yield
     # Shutdown
     pass
@@ -42,6 +50,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Setup Prometheus metrics endpoint
+setup_metrics_endpoint(app)
+
 # CORS for Streamlit frontend
 app.add_middleware(
     CORSMiddleware,
@@ -50,6 +61,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Middleware to track API requests
+@app.middleware("http")
+async def track_requests(request: Request, call_next):
+    """Track API requests for metrics."""
+    start_time = time.time()
+    response = await call_next(request)
+    duration = time.time() - start_time
+    
+    # Record metrics (skip /metrics endpoint to avoid recursion)
+    if request.url.path != "/metrics":
+        metrics = get_metrics()
+        metrics.record_api_request(
+            endpoint=request.url.path,
+            method=request.method,
+            status_code=response.status_code,
+        )
+    
+    return response
+
 
 # Include routers
 app.include_router(trades_router, prefix="/api/trades", tags=["Trades"])
@@ -86,6 +118,20 @@ class GridResponse(BaseModel):
     current_price: Optional[float]
     levels: list[GridLevelResponse]
     total_levels: int
+
+
+# Health Check Models
+class HealthResponse(BaseModel):
+    """Health check response."""
+    status: str
+    timestamp: datetime
+
+
+class ReadinessResponse(BaseModel):
+    """Readiness check response."""
+    status: str
+    checks: dict
+    timestamp: datetime
 
 
 # Alert Models
@@ -162,6 +208,12 @@ async def get_status():
     state = read_state()
     
     if state is not None:
+        # Update metrics from state
+        metrics = get_metrics()
+        metrics.set_bot_status(state.status == "running")
+        if state.uptime_seconds:
+            pass  # Uptime is managed by metrics module
+        
         return StatusResponse(
             status=state.status,
             state=state.state,
@@ -223,6 +275,11 @@ async def get_grid():
                 order_id=level.get("order_id"),
             ))
         
+        # Update metrics
+        metrics = get_metrics()
+        filled_count = sum(1 for l in state.grid_levels if l.get("filled", False))
+        metrics.set_grid_levels(active=len(levels) - filled_count, filled=filled_count)
+        
         return GridResponse(
             center_price=state.center_price,
             current_price=state.current_price,
@@ -261,7 +318,103 @@ async def get_grid():
     )
 
 
+# =============================================================================
+# Health Check Endpoints
+# =============================================================================
+
+@app.get("/health", response_model=HealthResponse, tags=["Health"])
+async def health_check():
+    """Basic health check endpoint for Docker.
+    
+    Returns 200 if the API is responsive.
+    """
+    return HealthResponse(
+        status="healthy",
+        timestamp=datetime.now(),
+    )
+
+
+@app.get("/health/live", response_model=HealthResponse, tags=["Health"])
+async def liveness_check():
+    """Liveness probe for Kubernetes/Docker.
+    
+    Returns 200 if the process is alive and responding.
+    Used by orchestrators to determine if the container should be restarted.
+    """
+    return HealthResponse(
+        status="alive",
+        timestamp=datetime.now(),
+    )
+
+
+@app.get("/health/ready", response_model=ReadinessResponse, tags=["Health"])
+async def readiness_check(response: Response):
+    """Readiness probe for Kubernetes/Docker.
+    
+    Checks if the service is ready to accept traffic:
+    - Database connection is working
+    - Bot state file is accessible (if bot is expected to be running)
+    
+    Returns 200 if ready, 503 if not ready.
+    """
+    checks = {}
+    all_healthy = True
+    
+    # Check 1: Database connectivity
+    try:
+        # Use db_engine directly
+        with db_engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        checks["database"] = {"status": "ok"}
+    except Exception as e:
+        checks["database"] = {"status": "error", "message": str(e)}
+        all_healthy = False
+        # Record error metric
+        get_metrics().record_error("database")
+    
+    # Check 2: State file accessible (optional check)
+    state_path = Path("data/bot_state.json")
+    if state_path.exists():
+        try:
+            state = read_state()
+            if state is not None:
+                checks["bot_state"] = {
+                    "status": "ok",
+                    "bot_status": state.status,
+                }
+            else:
+                checks["bot_state"] = {"status": "ok", "message": "State file exists but empty"}
+        except Exception as e:
+            checks["bot_state"] = {"status": "warning", "message": str(e)}
+    else:
+        checks["bot_state"] = {"status": "ok", "message": "No state file (bot may not be running)"}
+    
+    # Check 3: Data directory writable
+    try:
+        data_dir = Path("data")
+        data_dir.mkdir(exist_ok=True)
+        test_file = data_dir / ".health_check"
+        test_file.write_text("ok")
+        test_file.unlink()
+        checks["data_directory"] = {"status": "ok"}
+    except Exception as e:
+        checks["data_directory"] = {"status": "error", "message": str(e)}
+        all_healthy = False
+    
+    # Set response status code
+    if not all_healthy:
+        response.status_code = 503
+    
+    return ReadinessResponse(
+        status="ready" if all_healthy else "not_ready",
+        checks=checks,
+        timestamp=datetime.now(),
+    )
+
+
+# =============================================================================
 # Alert Endpoints
+# =============================================================================
 
 @app.get("/api/alerts/config", response_model=AlertConfigResponse, tags=["Alerts"])
 async def get_alert_config():
@@ -387,12 +540,6 @@ async def update_alert_rule(request: AlertRuleUpdateRequest):
         raise HTTPException(status_code=404, detail=f"Rule not found: {request.name}")
     
     return {"success": True, "message": f"Rule '{request.name}' {'enabled' if request.enabled else 'disabled'}"}
-
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint for Docker."""
-    return {"status": "healthy"}
 
 
 if __name__ == "__main__":
