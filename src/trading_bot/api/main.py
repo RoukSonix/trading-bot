@@ -8,7 +8,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from trading_bot.api.routes import trades_router, positions_router, bot_router
+from trading_bot.api.routes import (
+    trades_router,
+    positions_router,
+    bot_router,
+    orders_router,
+    candles_router,
+)
 from trading_bot.core.database import init_db
 from trading_bot.core.state import read_state, BotState as SharedBotState
 
@@ -43,6 +49,8 @@ app.add_middleware(
 app.include_router(trades_router, prefix="/api/trades", tags=["Trades"])
 app.include_router(positions_router, prefix="/api/positions", tags=["Positions"])
 app.include_router(bot_router, prefix="/api/bot", tags=["Bot Control"])
+app.include_router(orders_router, prefix="/api/orders", tags=["Orders"])
+app.include_router(candles_router, prefix="/api/candles", tags=["Candles"])
 
 
 class StatusResponse(BaseModel):

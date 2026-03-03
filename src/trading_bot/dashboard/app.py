@@ -6,7 +6,13 @@ import requests
 from datetime import datetime
 import time
 
-from trading_bot.dashboard.components import GridVisualization, PnLChart, TradeTable
+from trading_bot.dashboard.components import (
+    GridVisualization,
+    PnLChart,
+    TradeTable,
+    CandlestickChart,
+    OrderBook,
+)
 
 # Configuration
 API_BASE_URL = os.getenv("API_URL", "http://localhost:8000")
@@ -29,6 +35,8 @@ def fetch_api(endpoint: str, method: str = "GET", **kwargs):
             response = requests.get(url, timeout=5, **kwargs)
         elif method == "POST":
             response = requests.post(url, timeout=5, **kwargs)
+        elif method == "DELETE":
+            response = requests.delete(url, timeout=5, **kwargs)
         else:
             return None
         
@@ -37,6 +45,117 @@ def fetch_api(endpoint: str, method: str = "GET", **kwargs):
         return None
     except requests.exceptions.RequestException:
         return None
+
+
+def get_theme_css(dark_mode: bool) -> str:
+    """Get CSS for theme."""
+    if dark_mode:
+        return """
+        <style>
+        .main-header {
+            font-size: 2.5rem;
+            color: #2196F3;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+        .status-running { color: #26A69A; }
+        .status-paused { color: #FFA726; }
+        .status-stopped { color: #EF5350; }
+        .metric-card {
+            background-color: #1E1E1E;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            border-left: 4px solid #2196F3;
+        }
+        .price-up { color: #26A69A; font-weight: bold; }
+        .price-down { color: #EF5350; font-weight: bold; }
+        .price-ticker {
+            font-size: 1.8rem;
+            font-weight: bold;
+            text-align: center;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        </style>
+        """
+    else:
+        return """
+        <style>
+        .main-header {
+            font-size: 2.5rem;
+            color: #1976D2;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+        .status-running { color: #00897B; }
+        .status-paused { color: #F57C00; }
+        .status-stopped { color: #E53935; }
+        .metric-card {
+            background-color: #F5F5F5;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            border-left: 4px solid #1976D2;
+        }
+        .price-up { color: #00897B; font-weight: bold; }
+        .price-down { color: #E53935; font-weight: bold; }
+        .price-ticker {
+            font-size: 1.8rem;
+            font-weight: bold;
+            text-align: center;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            background-color: #FAFAFA;
+            margin-bottom: 1rem;
+        }
+        </style>
+        """
+
+
+def render_price_ticker(status: dict | None):
+    """Render live price ticker in header."""
+    if not status:
+        return
+    
+    current_price = status.get("current_price")
+    if not current_price:
+        # Try fetching from candles API
+        price_data = fetch_api("/api/candles/current-price")
+        if price_data:
+            current_price = price_data.get("price")
+    
+    if not current_price:
+        return
+    
+    # Store previous price for comparison
+    prev_price = st.session_state.get("prev_price", current_price)
+    st.session_state["prev_price"] = current_price
+    
+    # Determine price direction
+    if current_price > prev_price:
+        direction = "up"
+        arrow = "▲"
+        color_class = "price-up"
+    elif current_price < prev_price:
+        direction = "down"
+        arrow = "▼"
+        color_class = "price-down"
+    else:
+        direction = "flat"
+        arrow = "●"
+        color_class = ""
+    
+    symbol = status.get("symbol", "BTC/USDT")
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown(
+            f'<div class="price-ticker">'
+            f'<span class="{color_class}">{arrow}</span> '
+            f'{symbol}: <span class="{color_class}">${current_price:,.2f}</span>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
 
 
 def main():
@@ -48,33 +167,43 @@ def main():
         initial_sidebar_state="expanded",
     )
     
-    # Custom CSS
-    st.markdown("""
-    <style>
-    .main-header {
-        font-size: 2.5rem;
-        color: #2196F3;
-        text-align: center;
-        margin-bottom: 1rem;
-    }
-    .status-running { color: #26A69A; }
-    .status-paused { color: #FFA726; }
-    .status-stopped { color: #EF5350; }
-    .metric-card {
-        background-color: #1E1E1E;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border-left: 4px solid #2196F3;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    # Initialize session state
+    if "dark_mode" not in st.session_state:
+        st.session_state["dark_mode"] = True
+    if "prev_price" not in st.session_state:
+        st.session_state["prev_price"] = 0
+    if "last_trade_count" not in st.session_state:
+        st.session_state["last_trade_count"] = 0
+    if "last_bot_state" not in st.session_state:
+        st.session_state["last_bot_state"] = None
+    
+    # Apply theme CSS
+    st.markdown(get_theme_css(st.session_state["dark_mode"]), unsafe_allow_html=True)
     
     # Header
     st.markdown('<h1 class="main-header">🤖 Trading Bot Dashboard</h1>', unsafe_allow_html=True)
     
+    # Get status for header
+    status = fetch_api("/api/status")
+    
+    # Live Price Ticker
+    render_price_ticker(status)
+    
+    # Check for notifications
+    _check_notifications(status)
+    
     # Sidebar
     with st.sidebar:
         st.header("⚙️ Controls")
+        
+        # Theme toggle
+        st.subheader("🎨 Theme")
+        if st.toggle("Dark Mode", value=st.session_state["dark_mode"], key="theme_toggle"):
+            st.session_state["dark_mode"] = True
+        else:
+            st.session_state["dark_mode"] = False
+        
+        st.divider()
         
         # Refresh settings
         auto_refresh = st.checkbox("Auto Refresh", value=True)
@@ -93,31 +222,56 @@ def main():
             if st.button("⏸️ Pause", use_container_width=True):
                 result = fetch_api("/api/bot/pause", method="POST")
                 if result and result.get("success"):
-                    st.success("Bot paused")
+                    st.toast("✅ Bot paused", icon="⏸️")
                 else:
-                    st.error(result.get("message", "Failed") if result else "API error")
+                    st.toast("❌ Failed to pause", icon="⚠️")
         
         with col2:
             if st.button("▶️ Resume", use_container_width=True):
                 result = fetch_api("/api/bot/resume", method="POST")
                 if result and result.get("success"):
-                    st.success("Bot resumed")
+                    st.toast("✅ Bot resumed", icon="▶️")
                 else:
-                    st.error(result.get("message", "Failed") if result else "API error")
+                    st.toast("❌ Failed to resume", icon="⚠️")
         
         if st.button("🛑 Stop Bot", type="secondary", use_container_width=True):
             if st.button("⚠️ Confirm Stop"):
                 result = fetch_api("/api/bot/stop", method="POST")
                 if result and result.get("success"):
-                    st.warning("Bot stopped")
+                    st.toast("⚠️ Bot stopped", icon="🛑")
                 else:
-                    st.error("Failed to stop")
+                    st.toast("❌ Failed to stop", icon="⚠️")
+        
+        st.divider()
+        
+        # Force Trade Buttons
+        st.subheader("⚡ Force Trade")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🟢 Force Buy", use_container_width=True, type="primary"):
+                result = fetch_api("/api/orders/force-buy", method="POST")
+                if result and result.get("success"):
+                    price = result.get("price", 0)
+                    st.toast(f"✅ Buy executed @ ${price:,.2f}", icon="🟢")
+                else:
+                    msg = result.get("message", "Failed") if result else "API error"
+                    st.toast(f"❌ {msg}", icon="⚠️")
+        
+        with col2:
+            if st.button("🔴 Force Sell", use_container_width=True, type="secondary"):
+                result = fetch_api("/api/orders/force-sell", method="POST")
+                if result and result.get("success"):
+                    price = result.get("price", 0)
+                    st.toast(f"✅ Sell executed @ ${price:,.2f}", icon="🔴")
+                else:
+                    msg = result.get("message", "Failed") if result else "API error"
+                    st.toast(f"❌ {msg}", icon="⚠️")
         
         st.divider()
         
         # API status
         st.subheader("🔌 API Status")
-        status = fetch_api("/api/status")
         if status:
             st.success("Connected")
             st.json({
@@ -130,34 +284,75 @@ def main():
             st.info("Start the API server with:\n`uvicorn trading_bot.api.main:app`")
     
     # Main content
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📊 Overview",
-        "📈 Grid Trading",
+        "📈 Trading Chart",
+        "🔲 Grid Trading",
         "💰 PnL Analysis",
         "📋 Trade History",
+        "📑 Orders",
     ])
     
     # Initialize components
     grid_viz = GridVisualization()
     pnl_chart = PnLChart()
     trade_table = TradeTable()
+    candle_chart = CandlestickChart()
+    order_book = OrderBook()
     
     with tab1:
         _render_overview(status)
     
     with tab2:
-        _render_grid_tab(grid_viz)
+        _render_chart_tab(candle_chart, status)
     
     with tab3:
-        _render_pnl_tab(pnl_chart)
+        _render_grid_tab(grid_viz, status)
     
     with tab4:
+        _render_pnl_tab(pnl_chart)
+    
+    with tab5:
         _render_trades_tab(trade_table)
+    
+    with tab6:
+        _render_orders_tab(order_book)
     
     # Auto refresh
     if auto_refresh:
         time.sleep(refresh_interval)
         st.rerun()
+
+
+def _check_notifications(status: dict | None):
+    """Check for changes and show toast notifications."""
+    if not status:
+        return
+    
+    # Check for state change
+    current_state = status.get("state")
+    if st.session_state["last_bot_state"] is not None:
+        if current_state != st.session_state["last_bot_state"]:
+            st.toast(f"🔔 Bot state changed: {current_state.upper()}", icon="🤖")
+    st.session_state["last_bot_state"] = current_state
+    
+    # Check for new trades
+    trades_data = fetch_api("/api/trades", params={"per_page": 1})
+    if trades_data:
+        current_count = trades_data.get("total", 0)
+        if st.session_state["last_trade_count"] > 0:
+            if current_count > st.session_state["last_trade_count"]:
+                new_trades = current_count - st.session_state["last_trade_count"]
+                st.toast(f"📈 {new_trades} new trade(s) executed!", icon="💰")
+        st.session_state["last_trade_count"] = current_count
+    
+    # Check for errors
+    errors = status.get("errors", 0)
+    if errors > 0:
+        prev_errors = st.session_state.get("last_errors", 0)
+        if errors > prev_errors:
+            st.toast(f"⚠️ {errors - prev_errors} new error(s)", icon="🚨")
+        st.session_state["last_errors"] = errors
 
 
 def _render_overview(status: dict | None):
@@ -240,15 +435,64 @@ def _render_overview(status: dict | None):
             st.text(f"AI Enabled: {'Yes' if config.get('ai_enabled') else 'No'}")
 
 
-def _render_grid_tab(grid_viz: GridVisualization):
+def _render_chart_tab(candle_chart: CandlestickChart, status: dict | None):
+    """Render trading chart tab."""
+    st.header("📈 Trading Chart")
+    
+    # Chart settings
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        timeframe = st.selectbox("Timeframe", ["1h", "15m", "4h", "1d"], index=0)
+    with col2:
+        limit = st.selectbox("Candles", [50, 100, 200], index=1)
+    with col3:
+        show_indicators = st.multiselect(
+            "Indicators",
+            ["MA", "RSI", "Volume"],
+            default=["MA", "RSI", "Volume"]
+        )
+    
+    # Fetch candle data
+    candles_data = fetch_api("/api/candles", params={
+        "timeframe": timeframe,
+        "limit": limit,
+    })
+    
+    # Fetch grid data for overlay
+    grid_data = fetch_api("/api/grid")
+    grid_levels = grid_data.get("levels", []) if grid_data else None
+    
+    current_price = status.get("current_price") if status else None
+    
+    if candles_data and candles_data.get("candles"):
+        candle_chart.render(
+            candles=candles_data["candles"],
+            grid_levels=grid_levels,
+            current_price=current_price,
+            show_ma="MA" in show_indicators,
+            show_rsi="RSI" in show_indicators,
+            show_volume="Volume" in show_indicators,
+            title=f"{candles_data.get('symbol', 'BTC/USDT')} - {timeframe}",
+        )
+    else:
+        st.warning("Unable to fetch candle data. The API might be unavailable.")
+        st.info("Make sure the trading bot API is running and accessible.")
+
+
+def _render_grid_tab(grid_viz: GridVisualization, status: dict | None):
     """Render grid trading tab."""
-    st.header("📈 Grid Trading")
+    st.header("🔲 Grid Trading")
     
     grid_data = fetch_api("/api/grid")
-    status = fetch_api("/api/status")
     current_price = status.get("current_price") if status else None
     
     if grid_data:
+        # Enhanced Grid Visualization
+        _render_enhanced_grid(grid_data, current_price)
+        
+        st.divider()
+        
+        # Original visualization
         grid_viz.render(grid_data, current_price=current_price)
         
         st.divider()
@@ -260,6 +504,85 @@ def _render_grid_tab(grid_viz: GridVisualization):
         st.info("No grid data available. The bot may not be running.")
 
 
+def _render_enhanced_grid(grid_data: dict, current_price: float | None):
+    """Render enhanced horizontal grid visualization."""
+    import plotly.graph_objects as go
+    
+    levels = grid_data.get("levels", [])
+    if not levels:
+        return
+    
+    st.subheader("📊 Grid Levels Diagram")
+    
+    # Sort levels by price
+    sorted_levels = sorted(levels, key=lambda x: x["price"])
+    
+    # Create horizontal bar chart
+    fig = go.Figure()
+    
+    prices = [l["price"] for l in sorted_levels]
+    colors = []
+    labels = []
+    
+    for level in sorted_levels:
+        if level["filled"]:
+            colors.append("#9E9E9E")  # Gray for filled
+            labels.append(f"✅ {level['side'].upper()}")
+        elif level["side"] == "buy":
+            colors.append("#26A69A")  # Green for buy
+            labels.append(f"🟢 BUY")
+        else:
+            colors.append("#EF5350")  # Red for sell
+            labels.append(f"🔴 SELL")
+    
+    # Add bars
+    fig.add_trace(go.Bar(
+        y=[f"${p:,.0f}" for p in prices],
+        x=[1] * len(prices),
+        orientation='h',
+        marker_color=colors,
+        text=labels,
+        textposition='inside',
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "Status: %{text}<br>"
+            "<extra></extra>"
+        ),
+    ))
+    
+    # Add current price line
+    if current_price:
+        fig.add_vline(
+            x=0.5,
+            line_dash="solid",
+            line_color="#FFEB3B",
+            line_width=3,
+            annotation_text=f"Current: ${current_price:,.2f}",
+        )
+        # Find where current price would be
+        for i, price in enumerate(prices):
+            if price > current_price:
+                fig.add_annotation(
+                    x=1.1,
+                    y=i - 0.5,
+                    text=f"👈 Current: ${current_price:,.2f}",
+                    showarrow=False,
+                    font=dict(color="#FFEB3B", size=12),
+                )
+                break
+    
+    fig.update_layout(
+        template="plotly_dark",
+        height=max(300, len(levels) * 40),
+        margin=dict(l=100, r=50, t=30, b=30),
+        xaxis=dict(visible=False, range=[0, 1.5]),
+        yaxis=dict(title="Price Levels"),
+        showlegend=False,
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+
 def _render_pnl_tab(pnl_chart: PnLChart):
     """Render PnL analysis tab."""
     st.header("💰 PnL Analysis")
@@ -268,10 +591,13 @@ def _render_pnl_tab(pnl_chart: PnLChart):
     pnl_summary = fetch_api("/api/trades/pnl")
     if pnl_summary:
         pnl_chart.render_summary(pnl_summary)
+        
+        # Win/Loss Pie Chart
+        _render_win_loss_pie(pnl_summary)
     
     st.divider()
     
-    # PnL History
+    # PnL History Charts
     pnl_history = fetch_api("/api/trades/history")
     if pnl_history and pnl_history.get("history"):
         col1, col2 = st.columns(2)
@@ -281,6 +607,39 @@ def _render_pnl_tab(pnl_chart: PnLChart):
             pnl_chart.render_daily(pnl_history["history"])
     else:
         st.info("No PnL history available yet. Start trading to see charts!")
+
+
+def _render_win_loss_pie(pnl_summary: dict):
+    """Render win/loss ratio pie chart."""
+    import plotly.graph_objects as go
+    
+    st.subheader("📊 Win/Loss Ratio")
+    
+    wins = pnl_summary.get("winning_trades", 0)
+    losses = pnl_summary.get("losing_trades", 0)
+    
+    if wins == 0 and losses == 0:
+        st.info("No completed trades yet")
+        return
+    
+    fig = go.Figure(data=[go.Pie(
+        labels=["Wins", "Losses"],
+        values=[wins, losses],
+        hole=0.4,
+        marker_colors=["#26A69A", "#EF5350"],
+        textinfo="label+percent+value",
+        hovertemplate="<b>%{label}</b><br>Count: %{value}<br>%{percent}<extra></extra>",
+    )])
+    
+    fig.update_layout(
+        template="plotly_dark",
+        height=300,
+        margin=dict(l=50, r=50, t=30, b=30),
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5),
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def _render_trades_tab(trade_table: TradeTable):
@@ -317,6 +676,43 @@ def _render_trades_tab(trade_table: TradeTable):
         )
     else:
         st.info("No trades recorded yet.")
+
+
+def _render_orders_tab(order_book: OrderBook):
+    """Render orders tab."""
+    st.header("📑 Open Orders")
+    
+    # Fetch orders
+    orders_data = fetch_api("/api/orders")
+    
+    if orders_data and orders_data.get("orders"):
+        orders = orders_data["orders"]
+        
+        # Cancel handler
+        def handle_cancel(order_id: str):
+            result = fetch_api(f"/api/orders/{order_id}", method="DELETE")
+            if result and result.get("success"):
+                st.toast(f"✅ Order {order_id} cancelled", icon="❌")
+                st.rerun()
+            else:
+                st.toast(f"❌ Failed to cancel order", icon="⚠️")
+        
+        # Check session state for cancel requests
+        for key in list(st.session_state.keys()):
+            if key.startswith("cancel_order_") and st.session_state[key]:
+                order_id = key.replace("cancel_order_", "")
+                handle_cancel(order_id)
+                st.session_state[key] = False
+        
+        # Grouped view
+        order_book.render_grouped(orders)
+        
+        st.divider()
+        
+        # Detailed view
+        order_book.render(orders, on_cancel=handle_cancel)
+    else:
+        st.info("No open orders")
 
 
 if __name__ == "__main__":
