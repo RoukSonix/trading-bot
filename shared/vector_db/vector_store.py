@@ -15,7 +15,7 @@ from loguru import logger
 
 # Lazy-loaded client
 _client = None
-_persist_dir: str = "data/vector_db"
+_persist_dir: str = "data/chroma"
 
 
 def set_persist_dir(path: str) -> None:
@@ -137,9 +137,9 @@ class VectorStore:
         ids: list[str] | None = None,
         batch_size: int = 32,
     ) -> list[str]:
-        """Add documents with sentence-transformer embeddings.
+        """Add documents with Ollama embeddings.
 
-        Uses our embeddings module instead of ChromaDB's default.
+        Uses our embeddings module (Ollama nomic-embed-text) instead of ChromaDB's default.
 
         Args:
             texts: Document texts.
@@ -208,7 +208,7 @@ class VectorStore:
         n_results: int = 5,
         where: dict | None = None,
     ) -> list[dict[str, Any]]:
-        """Query using sentence-transformer embedding.
+        """Query using Ollama embedding.
 
         Args:
             query_text: Query text.

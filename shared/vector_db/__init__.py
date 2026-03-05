@@ -1,11 +1,11 @@
 """Vector database module for news storage and sentiment analysis."""
 
 from shared.vector_db.embeddings import (
+    check_ollama_available,
     cosine_similarity,
     generate_embedding,
     generate_embeddings,
     get_embedding_dimension,
-    set_model_name,
     text_hash,
 )
 from shared.vector_db.news_fetcher import (
@@ -26,12 +26,12 @@ from shared.vector_db.vector_store import (
 )
 
 __all__ = [
-    # Embeddings
+    # Embeddings (Ollama)
     "generate_embedding",
     "generate_embeddings",
     "cosine_similarity",
     "get_embedding_dimension",
-    "set_model_name",
+    "check_ollama_available",
     "text_hash",
     # Vector Store
     "VectorStore",

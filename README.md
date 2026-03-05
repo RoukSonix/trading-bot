@@ -104,7 +104,7 @@ All bots share common infrastructure:
 - **Backtest** - Historical data backtesting engine
 - **Monitoring** - Prometheus metrics + Grafana dashboards
 - **Factors** - Multi-factor analysis (momentum, volatility, RSI, volume) for grid optimization
-- **Vector DB** - ChromaDB-based news storage with sentence-transformer embeddings and sentiment analysis
+- **Vector DB** - ChromaDB-based news storage with Ollama (nomic-embed-text) embeddings and sentiment analysis
 
 ### Factor Analysis (Sprint 15)
 
@@ -151,10 +151,18 @@ print(f"Signal: {signal['signal']}, Strength: {signal['strength']:.2f}")
 context = sentiment_analyzer.to_ai_context(sentiment)
 ```
 
-**Additional dependencies** (Sprint 16):
+**Prerequisites** (Sprint 16):
 ```bash
-pip install sentence-transformers chromadb
+# Install Ollama and pull the embedding model
+ollama pull nomic-embed-text
+
+# Install Python dependencies
+pip install langchain-ollama chromadb
 ```
+
+**Environment variables** (optional):
+- `OLLAMA_BASE_URL` - Ollama server URL (default: `http://localhost:11434`)
+- `OLLAMA_EMBED_MODEL` - Embedding model (default: `nomic-embed-text`)
 
 ## Development
 
