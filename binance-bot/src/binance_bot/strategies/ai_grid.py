@@ -20,6 +20,7 @@ from shared.ai import (
     GridOptimization,
     SignalDecision,
 )
+from shared.factors import factor_calculator, factor_strategy
 
 
 @dataclass
@@ -55,6 +56,7 @@ class AIGridStrategy(GridStrategy):
         # AI state
         self.last_analysis: Optional[MarketAnalysis] = None
         self.last_optimization: Optional[GridOptimization] = None
+        self.last_factor_score = None  # FactorScore from factor analysis
         self.ai_enabled = config.ai_enabled and trading_agent.is_available
         
         if self.ai_enabled:
@@ -72,9 +74,15 @@ class AIGridStrategy(GridStrategy):
         best_bid: float,
         best_ask: float,
         price_action: str = "",
+        ohlcv_df: Optional[pd.DataFrame] = None,
+        news_sentiment_context: str = "",
     ) -> tuple[bool, str]:
         """Analyze market and setup grid with AI assistance.
-        
+
+        Args:
+            ohlcv_df: Optional OHLCV DataFrame for factor analysis.
+            news_sentiment_context: Optional news sentiment context string.
+
         Returns:
             Tuple of (should_trade, reason)
         """
@@ -82,10 +90,27 @@ class AIGridStrategy(GridStrategy):
             # Fallback to basic grid setup
             self.setup_grid(current_price)
             return True, "AI disabled, using default grid"
-        
+
+        # Factor analysis (if OHLCV data available)
+        factor_context = ""
+        if ohlcv_df is not None and len(ohlcv_df) >= 20:
+            try:
+                factors = factor_calculator.calculate(ohlcv_df, self.symbol)
+                score = factor_strategy.score(factors)
+                factor_context = factor_strategy.to_ai_context(factors, score)
+                self.last_factor_score = score
+
+                # If factors say pause, respect that
+                if score.grid_suitability < 0.3:
+                    logger.warning(
+                        f"Factor analysis: low grid suitability ({score.grid_suitability:.0%})"
+                    )
+            except Exception as e:
+                logger.warning(f"Factor analysis failed: {e}")
+
         # Get AI market analysis
         logger.info("🤖 Running AI market analysis...")
-        
+
         self.last_analysis = await trading_agent.analyze_market(
             symbol=self.symbol,
             current_price=current_price,
@@ -96,6 +121,8 @@ class AIGridStrategy(GridStrategy):
             best_bid=best_bid,
             best_ask=best_ask,
             price_action=price_action,
+            factor_context=factor_context,
+            news_context=news_sentiment_context,
         )
         
         # Check if AI recommends grid trading
@@ -405,6 +432,13 @@ REASON: <one line explanation>
                 "upper": self.last_optimization.upper_price if self.last_optimization else None,
                 "levels": self.last_optimization.num_levels if self.last_optimization else None,
             } if self.last_optimization else None,
+            "last_factor_score": {
+                "regime": self.last_factor_score.regime.value,
+                "trade_score": self.last_factor_score.trade_score,
+                "grid_suitability": self.last_factor_score.grid_suitability,
+                "risk_score": self.last_factor_score.risk_score,
+                "action": self.last_factor_score.action.value,
+            } if self.last_factor_score else None,
         }
         
         return status

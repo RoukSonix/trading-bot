@@ -31,6 +31,8 @@ MARKET_ANALYSIS_PROMPT = """Analyze the following market data for {symbol}:
 ## Recent Price Action
 {price_action}
 
+{factor_context}
+{news_context}
 ---
 
 Provide a brief analysis covering:
@@ -40,7 +42,9 @@ Provide a brief analysis covering:
 4. **Recommendation**: Should we activate grid trading? If yes, suggest price range.
 5. **Risk Level**: Low/Medium/High
 
-Keep response under 200 words. Be direct.
+Consider factor analysis scores and news sentiment in your assessment if available.
+
+Keep response under 250 words. Be direct.
 """
 
 GRID_OPTIMIZATION_PROMPT = """Based on the market analysis, optimize grid parameters for {symbol}:

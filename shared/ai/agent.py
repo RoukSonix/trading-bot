@@ -134,15 +134,22 @@ class TradingAgent:
         best_bid: float,
         best_ask: float,
         price_action: str,
+        factor_context: str = "",
+        news_context: str = "",
     ) -> MarketAnalysis:
-        """Analyze market conditions for a symbol."""
-        
+        """Analyze market conditions for a symbol.
+
+        Args:
+            factor_context: Optional factor analysis context string.
+            news_context: Optional news sentiment context string.
+        """
+
         # Format indicators
         ind_str = "\n".join([f"- {k}: {v}" for k, v in indicators.items()])
-        
+
         # Calculate spread
         spread = ((best_ask - best_bid) / best_bid) * 100
-        
+
         prompt = MARKET_ANALYSIS_PROMPT.format(
             symbol=symbol,
             current_price=current_price,
@@ -154,6 +161,8 @@ class TradingAgent:
             best_ask=best_ask,
             spread=spread,
             price_action=price_action,
+            factor_context=factor_context,
+            news_context=news_context,
         )
         
         response = await self._call_llm(prompt)

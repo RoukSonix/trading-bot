@@ -16,6 +16,8 @@ trading-bots/
 │   ├── dashboard/             # Streamlit UI
 │   ├── backtest/              # Backtesting engine
 │   ├── reports/               # PnL reports
+│   ├── factors/               # Multi-factor analysis (Sprint 15)
+│   ├── vector_db/             # Vector DB + news sentiment (Sprint 16)
 │   ├── monitoring/            # Prometheus metrics
 │   └── utils/                 # Logging, helpers
 ├── binance-bot/               # Binance Grid Trading Bot
@@ -101,6 +103,58 @@ All bots share common infrastructure:
 - **Dashboard** - Streamlit UI with charts, grid view, trade history
 - **Backtest** - Historical data backtesting engine
 - **Monitoring** - Prometheus metrics + Grafana dashboards
+- **Factors** - Multi-factor analysis (momentum, volatility, RSI, volume) for grid optimization
+- **Vector DB** - ChromaDB-based news storage with sentence-transformer embeddings and sentiment analysis
+
+### Factor Analysis (Sprint 15)
+
+The `shared/factors/` module provides quantitative factor analysis:
+
+```python
+from shared.factors import factor_calculator, factor_strategy
+
+# Calculate factors from OHLCV data
+factors = factor_calculator.calculate(ohlcv_df, "BTC/USDT")
+print(f"Momentum: {factors.momentum_score:+.3f}")
+print(f"Volatility: {factors.volatility_score:.3f}")
+print(f"RSI Signal: {factors.rsi_signal:+.2f}")
+
+# Score factors for grid optimization
+score = factor_strategy.score(factors)
+print(f"Regime: {score.regime.value}")
+print(f"Grid suitability: {score.grid_suitability:.0%}")
+print(f"Action: {score.action.value}")
+
+# Generate AI context
+context = factor_strategy.to_ai_context(factors, score)
+```
+
+### Vector DB & News Sentiment (Sprint 16)
+
+The `shared/vector_db/` module provides news-aware trading signals:
+
+```python
+from shared.vector_db import news_fetcher, news_store, sentiment_analyzer
+
+# Fetch and store news
+count = await news_fetcher.fetch_and_store(news_store, categories=["BTC"])
+
+# Query similar news
+results = news_store.query("bitcoin price prediction", n_results=5)
+
+# Analyze sentiment
+sentiment = sentiment_analyzer.analyze_articles(results)
+signal = sentiment_analyzer.get_trading_signal(sentiment, current_rsi=45.0)
+print(f"Signal: {signal['signal']}, Strength: {signal['strength']:.2f}")
+
+# Generate AI context
+context = sentiment_analyzer.to_ai_context(sentiment)
+```
+
+**Additional dependencies** (Sprint 16):
+```bash
+pip install sentence-transformers chromadb
+```
 
 ## Development
 
