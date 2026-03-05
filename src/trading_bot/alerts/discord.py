@@ -59,6 +59,12 @@ class DiscordAlert:
             logger.debug(f"Discord (disabled): {payload.get('content', 'embed')}")
             return False
         
+        # Ensure content exists for embed visibility
+        if "embeds" in payload and payload["embeds"] and "content" not in payload:
+            embed = payload["embeds"][0]
+            title = embed.get("title", "Alert")
+            payload["content"] = f"**{title}**"
+        
         try:
             session = await self._get_session()
             async with session.post(
