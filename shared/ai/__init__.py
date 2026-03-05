@@ -1,0 +1,35 @@
+"""AI decision-making module."""
+
+from shared.ai.agent import (
+    TradingAgent,
+    MarketAnalysis,
+    GridOptimization,
+    RiskAssessment,
+    Trend,
+    RiskLevel,
+    SignalDecision,
+    trading_agent,
+)
+from shared.ai.prompts import (
+    SYSTEM_PROMPT,
+    MARKET_ANALYSIS_PROMPT,
+    GRID_OPTIMIZATION_PROMPT,
+    RISK_ASSESSMENT_PROMPT,
+    SIGNAL_CONFIRMATION_PROMPT,
+)
+
+__all__ = [
+    "TradingAgent",
+    "MarketAnalysis",
+    "GridOptimization",
+    "RiskAssessment",
+    "Trend",
+    "RiskLevel",
+    "SignalDecision",
+    "trading_agent",
+    "SYSTEM_PROMPT",
+    "MARKET_ANALYSIS_PROMPT",
+    "GRID_OPTIMIZATION_PROMPT",
+    "RISK_ASSESSMENT_PROMPT",
+    "SIGNAL_CONFIRMATION_PROMPT",
+]

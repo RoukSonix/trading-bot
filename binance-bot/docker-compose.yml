@@ -1,0 +1,90 @@
+# =============================================================================
+# Binance Trading Bot - Docker Compose (Monorepo)
+# =============================================================================
+# Services: API, Dashboard, Bot (trading engine)
+# Build context: monorepo root (../)
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # FastAPI Backend (Port 8000)
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: ../
+      dockerfile: binance-bot/Dockerfile
+      target: api
+    container_name: binance-bot-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app:/app/binance-bot/src
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./data:/app/binance-bot/data
+      - ./logs:/app/binance-bot/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - trading-network
+
+  # ---------------------------------------------------------------------------
+  # Streamlit Dashboard (Port 8501)
+  # ---------------------------------------------------------------------------
+  dashboard:
+    build:
+      context: ../
+      dockerfile: binance-bot/Dockerfile
+      target: dashboard
+    container_name: binance-bot-dashboard
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app:/app/binance-bot/src
+      - API_URL=http://api:8000
+    volumes:
+      - ./data:/app/binance-bot/data
+      - ./logs:/app/binance-bot/logs
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - trading-network
+
+  # ---------------------------------------------------------------------------
+  # Trading Bot Engine (Optional - start manually)
+  # ---------------------------------------------------------------------------
+  bot:
+    build:
+      context: ../
+      dockerfile: binance-bot/Dockerfile
+      target: bot
+    container_name: binance-bot-engine
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app:/app/binance-bot/src
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - TRADING_MODE=${TRADING_MODE:-paper}
+    volumes:
+      - ./data:/app/binance-bot/data
+      - ./logs:/app/binance-bot/logs
+    profiles:
+      - bot  # Only starts with: docker compose --profile bot up
+    restart: unless-stopped
+    networks:
+      - trading-network
+
+networks:
+  trading-network:
+    driver: bridge

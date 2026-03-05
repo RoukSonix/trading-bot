@@ -1,144 +1,130 @@
-# Trading Bot
+# Trading Bots Monorepo
 
-AI-assisted automated trading bot for cryptocurrency markets.
+AI-assisted automated trading bots for multiple markets.
 
-## Features
+## Architecture
 
-- Grid Trading strategy
-- AI-powered decision making (LangChain + OpenRouter)
-- Freqtrade core for order execution
-- Binance exchange support
-- Risk management
-- Telegram notifications
-- Web Dashboard (FastAPI + Streamlit)
+```
+trading-bots/
+├── shared/                    # Shared code for all bots
+│   ├── ai/                    # LLM integration (LangChain + OpenRouter)
+│   ├── alerts/                # Telegram, Discord, Email notifications
+│   ├── config/                # Settings, env management
+│   ├── core/                  # Database, state, indicators
+│   ├── risk/                  # Position sizing, stop-loss, limits
+│   ├── api/                   # FastAPI backend
+│   ├── dashboard/             # Streamlit UI
+│   ├── backtest/              # Backtesting engine
+│   ├── reports/               # PnL reports
+│   ├── monitoring/            # Prometheus metrics
+│   └── utils/                 # Logging, helpers
+├── binance-bot/               # Binance Grid Trading Bot
+│   ├── src/binance_bot/       # Bot-specific code
+│   ├── scripts/               # Run scripts
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   └── ...
+├── polymarket-bot/            # Prediction Markets Bot (scaffold)
+│   ├── src/polymarket_bot/
+│   ├── Dockerfile
+│   └── ...
+└── README.md
+```
 
-## Setup
+## Bots
 
-### Local Development
+| Bot | Market | Status | Description |
+|-----|--------|--------|-------------|
+| **binance-bot** | Binance (Crypto) | Production-ready | Grid trading + AI-enhanced decisions |
+| **polymarket-bot** | Polymarket | Scaffold | Prediction markets (planned) |
+
+## Quick Start
+
+### Binance Bot
 
 ```bash
-# Create virtual environment
+cd binance-bot
+
+# Setup
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Install dependencies
 pip install -e .
 
-# Copy config
+# Configure
 cp .env.example .env
 # Edit .env with your API keys
 
-# Run bot
-python -m trading_bot.main
+# Run (local)
+PYTHONPATH=../:.  python scripts/run_paper_trading.py
 
-# Run dashboard (API + Streamlit)
-python scripts/run_dashboard.py
+# Run (Docker)
+docker compose up -d
 ```
 
-## Docker
-
-### Quick Start
+### Docker Commands
 
 ```bash
+cd binance-bot
+
 # Start API + Dashboard
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop
-docker-compose down
-```
-
-### Services
-
-| Service   | Port | Description               |
-|-----------|------|---------------------------|
-| api       | 8000 | FastAPI backend           |
-| dashboard | 8501 | Streamlit web interface   |
-| bot       | -    | Trading engine (optional) |
-
-### Commands
-
-```bash
-# Start all (API + Dashboard)
-docker-compose up -d
-
-# Start only dashboard
-docker-compose up dashboard -d
+docker compose up -d
 
 # Start with trading bot
-docker-compose --profile bot up -d
+docker compose --profile bot up -d
 
-# View logs
-docker-compose logs -f
-docker-compose logs -f api
-docker-compose logs -f dashboard
+# Development mode (hot reload)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 
-# Rebuild after code changes
-docker-compose build
-docker-compose up -d
+# Production
+docker compose -f docker-compose.prod.yml up -d
 
-# Stop all services
-docker-compose down
-
-# Stop and remove volumes
-docker-compose down -v
-```
-
-### Development Mode
-
-Hot reload enabled for faster development:
-
-```bash
-# Start in dev mode (with hot reload)
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
-
-# Or use alias
-alias dc-dev='docker-compose -f docker-compose.yml -f docker-compose.dev.yml'
-dc-dev up
-dc-dev logs -f
+# Monitoring (Prometheus + Grafana)
+docker compose -f docker-compose.monitoring.yml up -d
 ```
 
 ### URLs
 
 - **Dashboard:** http://localhost:8501
 - **API:** http://localhost:8000
-- **API Docs:** http://localhost:8000/docs (Swagger UI)
+- **API Docs:** http://localhost:8000/docs
+- **Prometheus:** http://localhost:9090
+- **Grafana:** http://localhost:3000
 
-### Environment Variables
+## Shared Modules
 
-Create `.env` from `.env.example`:
+All bots share common infrastructure:
+
+- **AI** - LLM-powered market analysis via OpenRouter
+- **Alerts** - Multi-channel notifications (Telegram, Discord, Email)
+- **Risk** - Position sizing (Kelly/fixed %), stop-loss, daily limits, drawdown protection
+- **API** - FastAPI backend with trade/position/order endpoints
+- **Dashboard** - Streamlit UI with charts, grid view, trade history
+- **Backtest** - Historical data backtesting engine
+- **Monitoring** - Prometheus metrics + Grafana dashboards
+
+## Development
 
 ```bash
-cp .env.example .env
+# Install all dependencies
+cd binance-bot && pip install -e ".[dev,dashboard]"
+
+# Set PYTHONPATH for local development
+export PYTHONPATH=/path/to/trading-bots:/path/to/trading-bots/binance-bot/src
+
+# Run tests
+pytest
+
+# Lint
+ruff check .
 ```
 
-Key variables:
-- `BINANCE_API_KEY` / `BINANCE_API_SECRET` - Exchange credentials
+## Environment Variables
+
+See `binance-bot/.env.example` for the full list. Key variables:
+
+- `BINANCE_API_KEY` / `BINANCE_SECRET_KEY` - Exchange credentials
 - `OPENROUTER_API_KEY` - AI model access
 - `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` - Notifications
+- `DISCORD_WEBHOOK_URL` - Discord alerts
 - `LOG_LEVEL` - Logging verbosity (DEBUG/INFO/WARNING)
 - `TRADING_MODE` - paper/live trading mode
-
-## Project Structure
-
-```
-src/trading_bot/
-├── main.py       # Entry point
-├── bot.py        # Trading bot engine
-├── config.py     # Configuration
-├── api/          # FastAPI backend
-├── dashboard/    # Streamlit frontend
-├── core/         # Core trading logic
-├── strategies/   # Grid + AI strategies
-├── ai/           # LLM decision making
-├── risk/         # Risk management
-├── backtest/     # Backtesting engine
-├── alerts/       # Telegram notifications
-└── reports/      # Report generation
-```
-
-## Status
-
-🚧 In development

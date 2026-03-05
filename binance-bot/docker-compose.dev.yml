@@ -1,0 +1,78 @@
+# =============================================================================
+# Binance Trading Bot - Docker Compose (Development)
+# =============================================================================
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # API with hot reload
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: ../
+      dockerfile: binance-bot/Dockerfile
+      target: production
+    command: >
+      python -m uvicorn shared.api.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /app/shared
+      --reload-dir /app/binance-bot/src
+    volumes:
+      - ../shared:/app/shared:cached
+      - ./src:/app/binance-bot/src:cached
+      - ./data:/app/binance-bot/data
+      - ./logs:/app/binance-bot/logs
+      - ./scripts:/app/binance-bot/scripts:cached
+    environment:
+      - LOG_LEVEL=DEBUG
+      - PYTHONPATH=/app:/app/binance-bot/src
+      - DEBUG=1
+
+  # ---------------------------------------------------------------------------
+  # Dashboard with hot reload
+  # ---------------------------------------------------------------------------
+  dashboard:
+    build:
+      context: ../
+      dockerfile: binance-bot/Dockerfile
+      target: production
+    command: >
+      python -m streamlit run
+      /app/shared/dashboard/app.py
+      --server.port 8501
+      --server.address 0.0.0.0
+      --server.headless true
+      --server.runOnSave true
+      --browser.gatherUsageStats false
+    volumes:
+      - ../shared:/app/shared:cached
+      - ./src:/app/binance-bot/src:cached
+      - ./data:/app/binance-bot/data
+      - ./logs:/app/binance-bot/logs
+    environment:
+      - LOG_LEVEL=DEBUG
+      - API_URL=http://api:8000
+      - DEBUG=1
+
+  # ---------------------------------------------------------------------------
+  # Bot with debug mode
+  # ---------------------------------------------------------------------------
+  bot:
+    build:
+      context: ../
+      dockerfile: binance-bot/Dockerfile
+      target: production
+    command: python -m binance_bot.main
+    volumes:
+      - ../shared:/app/shared:cached
+      - ./src:/app/binance-bot/src:cached
+      - ./data:/app/binance-bot/data
+      - ./logs:/app/binance-bot/logs
+      - ./scripts:/app/binance-bot/scripts:cached
+    environment:
+      - LOG_LEVEL=DEBUG
+      - TRADING_MODE=paper
+      - DEBUG=1
