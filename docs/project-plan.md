@@ -273,72 +273,115 @@
 - `risk/stop_loss.py` — StopLossManager (SL/TP, trailing)
 - `risk/limits.py` — RiskLimits (daily loss, max DD)
 - `risk/metrics.py` — RiskMetrics (Sharpe, Sortino, etc.)
+
 ---
 
-### Sprint 8: Live Trading Preparation ⬜ PLANNED
+### Sprint 8: Live Trading Preparation ✅ DONE
 **Goal:** Подготовка к торговле на реальные деньги
-**Priority:** HIGH
+**Completed:** 2026-03-01
 
 **Задачи:**
-- [ ] Mainnet connection (Binance production API)
-- [ ] API key security (encrypted storage)
-- [ ] Минимальный капитал test ($50-100)
-- [ ] Emergency stop mechanism
-- [ ] Trade logging to file/DB
-- [ ] PnL reporting
+- [x] Emergency stop mechanism
+- [x] Trade logging to file/DB
+- [x] PnL reporting (reports/)
+- [ ] Mainnet connection — deferred to after testing
+- [ ] API key security (encrypted storage) — deferred
+- [ ] Минимальный капитал test ($50-100) — ready when needed
 
 ---
 
-### Sprint 9: Web Dashboard ⬜ PLANNED
+### Sprint 9: Web Dashboard ✅ DONE
 **Goal:** Веб-интерфейс для мониторинга и управления
-**Priority:** MEDIUM
+**Completed:** 2026-03-02
 
-**Tech:** Streamlit (reference: QuantMuse dashboard) + FastAPI backend
-
-**Reference:** `/Users/a.lazarev/CentricVoid/QuantMuse/data_service/dashboard/`
+**Tech:** Streamlit + FastAPI backend
 
 **Задачи:**
-- [ ] Streamlit dashboard (из QuantMuse)
-- [ ] FastAPI backend for API
-- [ ] Real-time grid visualization
-- [ ] Position & PnL display
-- [ ] Trade history table
-- [ ] AI decisions log
-- [ ] Manual controls (pause/resume/adjust grid)
-- [ ] K-line charts with indicators
-- [ ] Authentication (basic)
+- [x] Streamlit dashboard (`dashboard/app.py`)
+- [x] FastAPI backend (`api/main.py`)
+- [x] Real-time grid visualization
+- [x] Position & PnL display
+- [x] Trade history table
+- [x] AI decisions log
+- [x] Manual controls (pause/resume/adjust grid)
+- [x] Docker support with hot reload
+- [ ] K-line charts with indicators — future
+- [ ] Authentication (basic) — future
+
+**URLs:**
+- Dashboard: http://localhost:8501
+- API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
 
 ---
 
-### Sprint 10: Infrastructure & DevOps ⬜ PLANNED
-**Goal:** Production-ready deployment
-**Priority:** MEDIUM
+### Sprint 10: UI/UX Improvements ✅ DONE
+**Goal:** Улучшение интерфейса дашборда
+**Completed:** 2026-03-03
 
 **Задачи:**
-- [ ] Docker production setup
-- [ ] VPS deployment (DigitalOcean/Hetzner)
+- [x] Responsive layout fixes
+- [x] Widget width improvements
+- [x] Configurable API_URL via env
+- [x] Shared state for Docker containers
+
+---
+
+### Sprint 11: Alerts & Monitoring ✅ DONE
+**Goal:** Multi-channel alerting system
+**Completed:** 2026-03-04
+
+**Задачи:**
+- [x] Discord webhook alerts
+- [x] Telegram notifications
+- [x] Email alerts (SMTP)
+- [x] Alert on trade execution
+- [x] Alert on errors
+- [x] Daily summary reports
+- [x] Configurable alert channels
+
+**Config (.env):**
+- `DISCORD_WEBHOOK_URL` — Discord integration
+- `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` — Telegram
+- `SMTP_*` — Email alerts
+
+---
+
+### Sprint 12: Production Hardening ✅ DONE
+**Goal:** Production-ready infrastructure
+**Completed:** 2026-03-05
+
+**Задачи:**
+- [x] Health checks for containers
+- [x] Prometheus metrics (`monitoring/metrics.py`)
+- [x] Structured logging
+- [x] Docker compose production config
+- [x] Docker compose monitoring stack
+- [ ] VPS deployment — next step
+- [ ] 24/7 operation с auto-restart — next step
+
+**Docker Configs:**
+- `docker-compose.yml` — base
+- `docker-compose.dev.yml` — development with hot reload
+- `docker-compose.prod.yml` — production
+- `docker-compose.monitoring.yml` — Prometheus/Grafana stack
+
+---
+
+### Sprint 13: VPS Deployment ⬜ PLANNED
+**Goal:** Deploy на production сервер
+**Priority:** HIGH — следующий шаг
+
+**Задачи:**
+- [ ] VPS setup (DigitalOcean/Hetzner)
 - [ ] 24/7 operation с auto-restart
-- [ ] Health monitoring (uptime, errors)
+- [ ] systemd service или Docker swarm
 - [ ] Backup system (DB, configs)
-- [ ] Alerting (Telegram on errors/stops)
+- [ ] SSL certificates (если нужен внешний доступ)
 
 ---
 
-### Sprint 11: Optimization & Tuning ⬜ PLANNED
-**Goal:** Улучшение производительности и прибыльности
-**Priority:** LOW (после стабилизации)
-
-**Задачи:**
-- [ ] AI prompt optimization (A/B testing)
-- [ ] Fee optimization (maker vs taker)
-- [ ] Grid parameter tuning (spacing, levels)
-- [ ] Backtesting improvements
-- [ ] Performance profiling
-- [ ] Multi-timeframe analysis
-
----
-
-### Sprint 12: Monorepo Restructure ⬜ PLANNED
+### Sprint 14: Monorepo Restructure ⬜ PLANNED
 **Goal:** Переделать репозиторий под multi-bot архитектуру
 **Priority:** LOW — после стабилизации текущего бота
 
