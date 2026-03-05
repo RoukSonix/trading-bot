@@ -368,22 +368,47 @@
 
 ---
 
-### Sprint 13: VPS Deployment ⬜ PLANNED
+### Sprint 13: VPS Deployment ✅ DONE
 **Goal:** Deploy на production сервер
-**Priority:** HIGH — следующий шаг
+**Completed:** 2026-03-05
 
 **Задачи:**
-- [ ] VPS setup (DigitalOcean/Hetzner)
-- [ ] 24/7 operation с auto-restart
-- [ ] systemd service или Docker swarm
-- [ ] Backup system (DB, configs)
-- [ ] SSL certificates (если нужен внешний доступ)
+- [x] Server setup (ts1-rnd-llm01 / 10.48.14.85)
+- [x] Docker containers running 24/7
+- [x] Discord alerts configured
+- [x] Dashboard accessible via VPN
+
+**URLs:**
+- Dashboard: http://10.48.14.85:8501
+- API: http://10.48.14.85:8000
 
 ---
 
-### Sprint 14: Monorepo Restructure ⬜ PLANNED
+### Sprint 14: Monorepo Restructure ✅ DONE
 **Goal:** Переделать репозиторий под multi-bot архитектуру
-**Priority:** LOW — после стабилизации текущего бота
+**Completed:** 2026-03-05
+
+**Структура:**
+```
+trading-bots/
+├── shared/              # Общие модули для всех ботов
+│   ├── ai/              # LLM integration
+│   ├── alerts/          # Discord, Telegram, Email
+│   ├── api/             # FastAPI backend
+│   ├── backtest/        # Backtesting engine
+│   ├── config/          # Settings management
+│   ├── core/            # Exchange, database
+│   ├── dashboard/       # Streamlit frontend
+│   ├── monitoring/      # Prometheus metrics
+│   ├── reports/         # PnL reports
+│   ├── risk/            # Risk management
+│   └── utils/           # Helpers, logging
+├── binance-bot/         # Grid Trading (active)
+├── polymarket-bot/      # Prediction Markets (scaffold)
+└── README.md
+```
+
+**Репозиторий:** https://github.com/RoukSonix/trading-bot (переименовать в trading-bots)
 
 **Зачем:**
 - Polymarket бот (prediction markets)
