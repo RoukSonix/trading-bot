@@ -46,11 +46,12 @@ class DiscordAlert:
         if self._session and not self._session.closed:
             await self._session.close()
     
-    async def _send_webhook(self, payload: dict) -> bool:
+    async def _send_webhook(self, payload: dict, silent: bool = True) -> bool:
         """Send payload to Discord webhook.
         
         Args:
             payload: Discord webhook payload
+            silent: If True, suppress notifications (default: True)
             
         Returns:
             True if sent successfully
@@ -64,6 +65,10 @@ class DiscordAlert:
             embed = payload["embeds"][0]
             title = embed.get("title", "Alert")
             payload["content"] = f"**{title}**"
+        
+        # Suppress notifications by default (silent mode)
+        if silent:
+            payload["flags"] = 4096  # SUPPRESS_NOTIFICATIONS
         
         try:
             session = await self._get_session()
