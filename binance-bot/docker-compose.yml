@@ -1,9 +1,11 @@
 # =============================================================================
-# Binance Trading Bot - Docker Compose (Monorepo)
+# Centric Void 01 - Docker Compose
 # =============================================================================
-# Services: API, Dashboard, Bot (trading engine)
+# Services: API, Dashboard, Service
 # Build context: monorepo root (../)
 # =============================================================================
+
+name: centric-void-01
 
 services:
   # ---------------------------------------------------------------------------
