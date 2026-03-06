@@ -1,7 +1,7 @@
 """Discord webhook alerts for trading bot."""
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 import os
 
@@ -70,31 +70,35 @@ class DiscordAlert:
         if silent:
             payload["flags"] = 4096  # SUPPRESS_NOTIFICATIONS
         
-        try:
-            session = await self._get_session()
-            async with session.post(
-                self.webhook_url,
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as response:
-                if response.status == 204:
-                    return True
-                elif response.status == 429:
-                    # Rate limited
-                    retry_after = (await response.json()).get("retry_after", 1)
-                    logger.warning(f"Discord rate limited, retry after {retry_after}s")
-                    await asyncio.sleep(retry_after)
-                    return await self._send_webhook(payload)
-                else:
-                    text = await response.text()
-                    logger.error(f"Discord error {response.status}: {text}")
-                    return False
-        except asyncio.TimeoutError:
-            logger.error("Discord webhook timeout")
-            return False
-        except Exception as e:
-            logger.error(f"Discord error: {e}")
-            return False
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                session = await self._get_session()
+                async with session.post(
+                    self.webhook_url,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 204:
+                        return True
+                    elif response.status == 429:
+                        retry_after = (await response.json()).get("retry_after", 1)
+                        logger.warning(f"Discord rate limited, retry after {retry_after}s (attempt {attempt + 1}/{max_retries})")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(retry_after)
+                            continue
+                        return False
+                    else:
+                        text = await response.text()
+                        logger.error(f"Discord error {response.status}: {text}")
+                        return False
+            except asyncio.TimeoutError:
+                logger.error("Discord webhook timeout")
+                return False
+            except Exception as e:
+                logger.error(f"Discord error: {e}")
+                return False
+        return False
     
     async def send_trade_alert(
         self,
@@ -150,7 +154,7 @@ class DiscordAlert:
             "title": f"{'🟢 BUY' if is_buy else '🔴 SELL'} Trade Executed",
             "color": color,
             "fields": fields,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "footer": {"text": "Trading Bot"},
         }
         
@@ -208,7 +212,7 @@ class DiscordAlert:
             "title": title,
             "color": color,
             "fields": fields,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "footer": {"text": "Trading Bot"},
         }
         
@@ -244,7 +248,7 @@ class DiscordAlert:
             "title": "🚨 Error Alert",
             "color": self.COLOR_ERROR,
             "fields": fields,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "footer": {"text": "Trading Bot"},
         }
         
@@ -304,10 +308,10 @@ class DiscordAlert:
             fields.append({"name": "Worst Trade", "value": f"${worst_trade:+,.2f}", "inline": True})
         
         embed = {
-            "title": f"📊 Daily Summary - {datetime.utcnow().strftime('%Y-%m-%d')}",
+            "title": f"📊 Daily Summary - {datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
             "color": color,
             "fields": fields,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "footer": {"text": "Trading Bot | Daily Report"},
         }
         
@@ -335,7 +339,7 @@ class DiscordAlert:
             "title": title,
             "description": description,
             "color": color or self.COLOR_INFO,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "footer": {"text": "Trading Bot"},
         }
         

@@ -1,7 +1,7 @@
 """Email alerts for trading bot using aiosmtplib."""
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional
@@ -79,6 +79,7 @@ class EmailAlert:
                 username=self.smtp_user,
                 password=self.smtp_pass,
                 start_tls=True,
+                timeout=30,
             )
             
             logger.debug(f"Email sent: {subject}")
@@ -156,7 +157,7 @@ class EmailAlert:
 <body>
     <div class="container">
         <h1>📊 Daily Trading Report</h1>
-        <p><strong>Date:</strong> {datetime.utcnow().strftime('%Y-%m-%d')}</p>
+        <p><strong>Date:</strong> {datetime.now(timezone.utc).strftime('%Y-%m-%d')}</p>
         <p><strong>Symbol:</strong> {symbol}</p>
         
         <div class="stat-grid">
@@ -231,7 +232,7 @@ class EmailAlert:
 </html>
 """
         
-        subject = f"Daily Report - {datetime.utcnow().strftime('%Y-%m-%d')} | PnL: ${total_pnl:+,.2f}"
+        subject = f"Daily Report - {datetime.now(timezone.utc).strftime('%Y-%m-%d')} | PnL: ${total_pnl:+,.2f}"
         return await self._send_email(subject, html, html=True)
     
     async def send_emergency_alert(self, message: str, details: Optional[str] = None) -> bool:
@@ -262,7 +263,7 @@ class EmailAlert:
         <h1>🚨 EMERGENCY ALERT</h1>
         <div class="message">{message}</div>
         {"<div class='details'>" + details + "</div>" if details else ""}
-        <p class="timestamp">Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}</p>
+        <p class="timestamp">Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}</p>
     </div>
 </body>
 </html>

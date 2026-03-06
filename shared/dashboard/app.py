@@ -3,7 +3,6 @@
 import os
 import streamlit as st
 import requests
-from datetime import datetime
 import time
 
 from shared.dashboard.components import (
@@ -219,7 +218,7 @@ def main():
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("⏸️ Pause", width="stretch"):
+            if st.button("⏸️ Pause", use_container_width=True):
                 result = fetch_api("/api/bot/pause", method="POST")
                 if result and result.get("success"):
                     st.toast("✅ Bot paused", icon="⏸️")
@@ -227,14 +226,14 @@ def main():
                     st.toast("❌ Failed to pause", icon="⚠️")
         
         with col2:
-            if st.button("▶️ Resume", width="stretch"):
+            if st.button("▶️ Resume", use_container_width=True):
                 result = fetch_api("/api/bot/resume", method="POST")
                 if result and result.get("success"):
                     st.toast("✅ Bot resumed", icon="▶️")
                 else:
                     st.toast("❌ Failed to resume", icon="⚠️")
         
-        if st.button("🛑 Stop Bot", type="secondary", width="stretch"):
+        if st.button("🛑 Stop Bot", type="secondary", use_container_width=True):
             if st.button("⚠️ Confirm Stop"):
                 result = fetch_api("/api/bot/stop", method="POST")
                 if result and result.get("success"):
@@ -249,7 +248,7 @@ def main():
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("🟢 Force Buy", width="stretch", type="primary"):
+            if st.button("🟢 Force Buy", use_container_width=True, type="primary"):
                 result = fetch_api("/api/orders/force-buy", method="POST")
                 if result and result.get("success"):
                     price = result.get("price", 0)
@@ -259,7 +258,7 @@ def main():
                     st.toast(f"❌ {msg}", icon="⚠️")
         
         with col2:
-            if st.button("🔴 Force Sell", width="stretch", type="secondary"):
+            if st.button("🔴 Force Sell", use_container_width=True, type="secondary"):
                 result = fetch_api("/api/orders/force-sell", method="POST")
                 if result and result.get("success"):
                     price = result.get("price", 0)
@@ -580,7 +579,7 @@ def _render_enhanced_grid(grid_data: dict, current_price: float | None):
         showlegend=False,
     )
     
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def _render_pnl_tab(pnl_chart: PnLChart):
@@ -639,7 +638,7 @@ def _render_win_loss_pie(pnl_summary: dict):
         legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5),
     )
     
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def _render_trades_tab(trade_table: TradeTable):

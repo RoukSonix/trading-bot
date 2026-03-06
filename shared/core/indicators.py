@@ -1,9 +1,6 @@
 """Technical analysis indicators."""
 
 import pandas as pd
-import numpy as np
-from typing import Optional
-from loguru import logger
 
 
 class Indicators:
@@ -197,7 +194,3 @@ class Indicators:
         df["atr"] = cls.atr(df)
         
         return df
-
-
-# Global instance
-indicators = Indicators()

@@ -2,9 +2,9 @@
 
 import asyncio
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Optional, Any
+from typing import Optional
 import traceback
 
 from loguru import logger
@@ -20,17 +20,6 @@ class AlertLevel(str, Enum):
     ERROR = "error"
     CRITICAL = "critical"
 
-
-class AlertType(str, Enum):
-    """Types of alerts."""
-    TRADE = "trade"
-    STATUS = "status"
-    ERROR = "error"
-    DAILY_SUMMARY = "daily_summary"
-    PRICE_ALERT = "price_alert"
-    RISK_ALERT = "risk_alert"
-    CONNECTION = "connection"
-    CUSTOM = "custom"
 
 
 class AlertConfig:
@@ -201,7 +190,7 @@ Price: ${price:,.2f}
 Amount: {amount:.6f}
 PnL: ${pnl:+,.2f}
 Order ID: {order_id or 'N/A'}
-Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}
+Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
 """
             result = await self.email.send_alert(f"Trade: {side.upper()} {symbol}", body)
             success = success or result
@@ -245,10 +234,10 @@ Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}
             body = f"""
 Bot Status Change: {status.upper()}
 Symbol: {symbol}
-Price: ${current_price:,.2f} if current_price else 'N/A'
-Portfolio: ${total_value:,.2f} if total_value else 'N/A'
+Price: {f'${current_price:,.2f}' if current_price is not None else 'N/A'}
+Portfolio: {f'${total_value:,.2f}' if total_value is not None else 'N/A'}
 Reason: {reason or 'N/A'}
-Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}
+Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
 """
             result = await self.email.send_alert(f"Bot {status.upper()}", body)
             success = success or result
@@ -292,7 +281,7 @@ Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}
 Error: {error}
 Context: {context or 'N/A'}
 Level: {level.value}
-Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}
+Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
 
 {('Traceback:\n' + tb) if tb else ''}
 """
@@ -424,7 +413,7 @@ Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}
                 # Parse target time
                 target_hour, target_minute = map(int, self.config.daily_summary_time.split(":"))
                 
-                now = datetime.utcnow()
+                now = datetime.now(timezone.utc)
                 target = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
                 
                 # If target time has passed today, schedule for tomorrow

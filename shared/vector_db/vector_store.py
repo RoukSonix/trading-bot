@@ -6,7 +6,7 @@ similarity-based retrieval.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -115,7 +115,7 @@ class VectorStore:
             metadatas = [{}] * len(texts)
         for meta in metadatas:
             if "added_at" not in meta:
-                meta["added_at"] = datetime.utcnow().isoformat()
+                meta["added_at"] = datetime.now(timezone.utc).isoformat()
 
         kwargs: dict[str, Any] = {
             "documents": texts,

@@ -85,7 +85,7 @@ class TradeTable:
         # Display table
         st.dataframe(
             display_df,
-            width="stretch",
+            use_container_width=True,
             hide_index=True,
         )
         

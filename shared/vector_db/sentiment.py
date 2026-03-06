@@ -7,7 +7,7 @@ with market conditions to generate trading signals.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 
 import numpy as np
@@ -143,7 +143,7 @@ class SentimentAnalyzer:
                 top_headlines=[],
             )
 
-        cutoff = datetime.utcnow() - timedelta(hours=max_age_hours)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
         scores = []
         confidences = []
         positive = 0

@@ -1,6 +1,6 @@
 """Database models and connection management."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from sqlalchemy import create_engine, Column, Integer, Float, String, DateTime, BigInteger, Index
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
@@ -30,7 +30,7 @@ class OHLCV(Base):
     low = Column(Float, nullable=False)
     close = Column(Float, nullable=False)
     volume = Column(Float, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Composite index for efficient queries
     __table_args__ = (
@@ -43,7 +43,7 @@ class OHLCV(Base):
     @property
     def datetime(self) -> datetime:
         """Convert timestamp to datetime."""
-        return datetime.utcfromtimestamp(self.timestamp / 1000)
+        return datetime.fromtimestamp(self.timestamp / 1000, tz=timezone.utc)
 
 
 class Trade(Base):
@@ -60,7 +60,7 @@ class Trade(Base):
     fee = Column(Float, default=0)
     order_id = Column(String(50), nullable=True)
     timestamp = Column(BigInteger, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     def __repr__(self):
         return f"<Trade {self.side} {self.amount} {self.symbol} @ {self.price}>"
@@ -78,7 +78,7 @@ class Position(Base):
     amount = Column(Float, nullable=False)
     unrealized_pnl = Column(Float, default=0)
     realized_pnl = Column(Float, default=0)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     def __repr__(self):
         return f"<Position {self.side} {self.amount} {self.symbol}>"
@@ -111,7 +111,7 @@ class TradeLog(Base):
     order_id = Column(String(50), nullable=True)
     strategy = Column(String(50), nullable=True)  # Strategy that generated trade
     notes = Column(String(255), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     __table_args__ = (
         Index("idx_trade_logs_timestamp", "timestamp"),
@@ -124,7 +124,7 @@ class TradeLog(Base):
     @property
     def datetime_utc(self) -> datetime:
         """Convert timestamp to datetime."""
-        return datetime.utcfromtimestamp(self.timestamp / 1000)
+        return datetime.fromtimestamp(self.timestamp / 1000, tz=timezone.utc)
     
     def to_dict(self) -> dict:
         """Convert to dictionary."""
@@ -174,7 +174,7 @@ def log_trade(
         Created TradeLog record
     """
     if timestamp is None:
-        timestamp = int(datetime.utcnow().timestamp() * 1000)
+        timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
     
     session = get_session()
     try:

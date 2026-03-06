@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import aiohttp
@@ -75,10 +75,10 @@ class NewsFetcher:
     async def _rate_limit(self, source: str) -> None:
         """Enforce rate limiting per source."""
         if source in self._last_fetch:
-            elapsed = (datetime.utcnow() - self._last_fetch[source]).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - self._last_fetch[source]).total_seconds()
             if elapsed < self.rate_limit_seconds:
                 await asyncio.sleep(self.rate_limit_seconds - elapsed)
-        self._last_fetch[source] = datetime.utcnow()
+        self._last_fetch[source] = datetime.now(timezone.utc)
 
     async def fetch_cryptocompare(
         self,
@@ -120,8 +120,8 @@ class NewsFetcher:
                         published = None
                         if "published_on" in item:
                             try:
-                                published = datetime.utcfromtimestamp(
-                                    item["published_on"]
+                                published = datetime.fromtimestamp(
+                                    item["published_on"], tz=timezone.utc
                                 )
                             except (ValueError, OSError):
                                 pass
@@ -196,7 +196,7 @@ class NewsFetcher:
                             ),
                             source="CoinGecko Trending",
                             url=url,
-                            published_at=datetime.utcnow(),
+                            published_at=datetime.now(timezone.utc),
                             categories=["trending"],
                             symbols=[symbol],
                         )
@@ -255,14 +255,14 @@ class NewsFetcher:
         self,
         store: Any,
         categories: list[str] | None = None,
-        use_sentence_transformers: bool = True,
+        use_ollama: bool = True,
     ) -> int:
         """Fetch news and store in vector database.
 
         Args:
             store: VectorStore instance.
             categories: Optional category filters.
-            use_sentence_transformers: Whether to use our embeddings.
+            use_ollama: Whether to generate embeddings via Ollama.
 
         Returns:
             Number of articles stored.
@@ -276,7 +276,7 @@ class NewsFetcher:
         metadatas = [a.to_metadata() for a in articles]
         ids = [f"news_{a.source}_{hash(a.url) & 0xFFFFFFFF}" for a in articles]
 
-        if use_sentence_transformers:
+        if use_ollama:
             store.add_with_embeddings(texts, metadatas=metadatas, ids=ids)
         else:
             store.add(texts, metadatas=metadatas, ids=ids)

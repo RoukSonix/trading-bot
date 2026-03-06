@@ -1,7 +1,7 @@
 """Order management for executing trades on exchange."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 from loguru import logger
@@ -40,7 +40,7 @@ class Order:
     filled: float = 0.0
     cost: float = 0.0
     fee: float = 0.0
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     def __repr__(self):
         return f"<Order {self.id} {self.side} {self.amount} {self.symbol} @ {self.price} [{self.status.value}]>"

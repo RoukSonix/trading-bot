@@ -19,9 +19,12 @@ from shared.config import settings
 from binance_bot.core.exchange import exchange_client
 from shared.core.indicators import Indicators
 from binance_bot.strategies import AIGridStrategy, AIGridConfig
-from shared.risk import PositionSizer, SizingMethod, RiskLimits, RiskMetrics, StopLossManager
+from shared.risk import PositionSizer, SizingMethod, RiskLimits, RiskMetrics
 from binance_bot.core.emergency import EmergencyStop
 from shared.core.state import BotState as SharedBotState, write_state, read_state
+from shared.vector_db.news_fetcher import NewsFetcher
+from shared.vector_db.sentiment import SentimentAnalyzer
+from shared.monitoring.metrics import get_metrics as get_trading_metrics
 from shared.alerts import (
     AlertManager,
     AlertConfig,
@@ -87,12 +90,15 @@ class TradingBot:
             max_consecutive_losses=5,
         )
         self.risk_metrics = RiskMetrics()
-        self.stop_loss_mgr = StopLossManager(
-            default_stop_pct=0.02,
-            default_tp_pct=0.03,
-            use_trailing=False,
-        )
-        
+        self.trading_metrics = get_trading_metrics()
+
+        # News Sentiment
+        self.news_fetcher = NewsFetcher()
+        self.sentiment_analyzer = SentimentAnalyzer()
+        self._news_sentiment_context: str = ""
+        self._last_news_fetch: Optional[datetime] = None
+        self._news_fetch_interval = timedelta(minutes=15)
+
         # Emergency Stop
         self.emergency_stop = EmergencyStop()
         
@@ -276,6 +282,8 @@ class TradingBot:
             best_bid=data["best_bid"],
             best_ask=data["best_ask"],
             price_action=f"Entry check at ${data['price']:,.2f}",
+            ohlcv_df=data["ohlcv_df"],
+            news_sentiment_context=self._news_sentiment_context,
         )
         
         self.last_entry_check = datetime.now()
@@ -342,6 +350,7 @@ class TradingBot:
                 "ATR (14)": latest.get("atr", ticker["last"] * 0.01),
             },
             "indicators_df": indicators_df,
+            "ohlcv_df": ohlcv_df,
         }
     
     async def _main_loop(self):
@@ -397,6 +406,9 @@ class TradingBot:
                     # Check if we should resume
                     await self._maybe_check_entry(current_price)
                 
+                # Periodic news sentiment fetch (~15 min)
+                await self._maybe_fetch_news()
+
                 # Status update every 60 ticks (~5 min)
                 if self.ticks % 60 == 0:
                     self._print_status(current_price)
@@ -469,6 +481,10 @@ class TradingBot:
                 
                 # Record trade in rules engine
                 self.rules_engine.record_trade(pnl)
+
+                # Record in Prometheus metrics
+                self.trading_metrics.record_trade(signal.type.value, self.symbol)
+                self.trading_metrics.set_pnl(pnl)
                 
                 # Update equity curve
                 paper_status = self.strategy.get_status().get("paper_trading", {})
@@ -541,7 +557,35 @@ class TradingBot:
             
         elif review["action"] == "ADJUST":
             logger.info(f"🔧 AI adjusted grid: {review['reason']}")
-    
+
+    async def _maybe_fetch_news(self):
+        """Fetch news and update sentiment context periodically (~15 min)."""
+        now = datetime.now()
+        if self._last_news_fetch is not None:
+            if now - self._last_news_fetch < self._news_fetch_interval:
+                return
+
+        try:
+            articles = await self.news_fetcher.fetch_all()
+            if articles:
+                # Convert NewsArticle objects to dicts for sentiment analyzer
+                article_dicts = [
+                    {"text": a.full_text, "metadata": a.to_metadata()}
+                    for a in articles
+                ]
+                sentiment = self.sentiment_analyzer.analyze_articles(article_dicts)
+                self._news_sentiment_context = self.sentiment_analyzer.to_ai_context(sentiment)
+                logger.info(
+                    f"📰 News sentiment updated: {sentiment.level.value} "
+                    f"(score: {sentiment.score:+.2f}, {sentiment.article_count} articles)"
+                )
+            else:
+                logger.debug("No news articles fetched")
+        except Exception as e:
+            logger.warning(f"News fetch failed: {e}")
+
+        self._last_news_fetch = now
+
     def _print_status(self, current_price: float):
         """Print current status."""
         status = self.strategy.get_status() if self.strategy else {}
