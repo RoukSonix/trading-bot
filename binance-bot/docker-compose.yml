@@ -14,7 +14,7 @@ services:
       context: ../
       dockerfile: binance-bot/Dockerfile
       target: api
-    container_name: binance-bot-api
+    container_name: centric-void-01-app-api
     ports:
       - "8000:8000"
     env_file:
@@ -33,7 +33,7 @@ services:
       start_period: 10s
     restart: unless-stopped
     networks:
-      - trading-network
+      - app-network
 
   # ---------------------------------------------------------------------------
   # Streamlit Dashboard (Port 8501)
@@ -43,7 +43,7 @@ services:
       context: ../
       dockerfile: binance-bot/Dockerfile
       target: dashboard
-    container_name: binance-bot-dashboard
+    container_name: centric-void-01-app-dashboard
     ports:
       - "8501:8501"
     env_file:
@@ -59,7 +59,7 @@ services:
         condition: service_started
     restart: unless-stopped
     networks:
-      - trading-network
+      - app-network
 
   # ---------------------------------------------------------------------------
   # Trading Bot Engine (Optional - start manually)
@@ -69,7 +69,7 @@ services:
       context: ../
       dockerfile: binance-bot/Dockerfile
       target: bot
-    container_name: binance-bot-engine
+    container_name: centric-void-01-app-service
     env_file:
       - .env
     environment:
@@ -83,8 +83,8 @@ services:
       - bot  # Only starts with: docker compose --profile bot up
     restart: unless-stopped
     networks:
-      - trading-network
+      - app-network
 
 networks:
-  trading-network:
+  app-network:
     driver: bridge
