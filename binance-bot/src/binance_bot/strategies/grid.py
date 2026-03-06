@@ -9,10 +9,12 @@ Works best in sideways/ranging markets with clear support and resistance.
 
 from dataclasses import dataclass, field
 from typing import Optional
+import time
 import pandas as pd
 from loguru import logger
 
 from binance_bot.strategies.base import BaseStrategy, Signal, SignalType, GridLevel
+from shared.core.database import SessionLocal, Trade
 
 
 @dataclass
@@ -215,6 +217,25 @@ class GridStrategy(BaseStrategy):
         if status == "filled":
             self.paper_trades.append(trade)
             logger.info(f"Paper trade: {signal.type.value.upper()} {signal.amount:.6f} @ ${signal.price:,.2f}")
+            
+            # Save to database
+            try:
+                db = SessionLocal()
+                db_trade = Trade(
+                    symbol=self.symbol,
+                    side=signal.type.value,
+                    price=signal.price,
+                    amount=signal.amount,
+                    cost=cost,
+                    fee=0,
+                    order_id=f"paper_{int(time.time() * 1000)}",
+                    timestamp=int(time.time() * 1000),
+                )
+                db.add(db_trade)
+                db.commit()
+                db.close()
+            except Exception as e:
+                logger.warning(f"Failed to save trade to DB: {e}")
         
         return trade
     
