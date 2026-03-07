@@ -89,18 +89,25 @@ class SentimentAnalyzer:
         Returns:
             Tuple of (score [-1, 1], confidence [0, 1]).
         """
+        import re
         text_lower = text.lower()
         total_score = 0.0
         match_count = 0
 
         for keyword, weight in self.bullish_kw.items():
-            count = text_lower.count(keyword)
+            # Match whole words only (word boundaries)
+            pattern = r'\b' + re.escape(keyword) + r'\b'
+            matches = re.findall(pattern, text_lower)
+            count = len(matches)
             if count > 0:
                 total_score += weight * count
                 match_count += count
 
         for keyword, weight in self.bearish_kw.items():
-            count = text_lower.count(keyword)
+            # Match whole words only (word boundaries)
+            pattern = r'\b' + re.escape(keyword) + r'\b'
+            matches = re.findall(pattern, text_lower)
+            count = len(matches)
             if count > 0:
                 total_score += weight * count  # weight is already negative
                 match_count += count

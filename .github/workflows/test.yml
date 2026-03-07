@@ -9,14 +9,13 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    - uses: actions/setup-python@v5
       with:
         python-version: '3.12'
+        cache: 'pip'
 
     - name: Install dependencies
       run: |
@@ -24,10 +23,11 @@ jobs:
         pip install -e binance-bot/
 
     - name: Run tests
-      run: |
-        pytest tests/ -v --cov=shared --cov=binance-bot/src --cov-report=xml
+      run: pytest tests/ -v --cov=binance-bot/src --cov=shared --tb=short
 
     - name: Upload coverage
-      uses: codecov/codecov-action@v4
+      if: always()
+      uses: actions/upload-artifact@v4
       with:
-        files: ./coverage.xml
+        name: coverage-report
+        path: htmlcov/
