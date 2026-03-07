@@ -34,6 +34,7 @@ from shared.alerts import (
     get_alert_manager,
     get_rules_engine,
 )
+from shared.strategies import StrategyEngine, StrategyRegistry
 
 
 class BotState(str, Enum):
@@ -54,6 +55,7 @@ class TradingBot:
         symbol: str = "BTC/USDT",
         config: Optional[AIGridConfig] = None,
         use_optimized: bool = False,
+        strategy_mode: str = "auto",
     ):
         """Initialize trading bot.
 
@@ -61,8 +63,12 @@ class TradingBot:
             symbol: Trading pair.
             config: AI grid configuration. If None, uses defaults.
             use_optimized: If True, load params from data/optimized_params.json.
+            strategy_mode: Strategy selection mode.
+                "auto" = regime-based multi-strategy engine (default).
+                "grid", "momentum", "mean_reversion", "breakout" = fixed strategy.
         """
         self.symbol = symbol
+        self.strategy_mode = strategy_mode
 
         base_config = config or AIGridConfig(
             grid_levels=5,
@@ -135,6 +141,16 @@ class TradingBot:
         # Alert Rules Engine
         self.rules_engine = get_rules_engine()
         self.rules_engine.set_alert_callback(self._handle_rule_alert)
+
+        # Multi-Strategy Engine (Sprint 22)
+        self.strategy_engine = StrategyEngine()
+        for name in StrategyRegistry.list_all():
+            self.strategy_engine.register(StrategyRegistry.get(name))
+
+        # If a specific strategy is requested, force it
+        if self.strategy_mode != "auto" and self.strategy_mode in StrategyRegistry.list_all():
+            strategy_class_name = StrategyRegistry.get(self.strategy_mode).name
+            self.strategy_engine.hot_swap(strategy_class_name)
     
     @staticmethod
     def _apply_optimized_params(config: AIGridConfig) -> AIGridConfig:
@@ -237,6 +253,8 @@ class TradingBot:
         logger.info(f"Environment: {settings.binance_env.value}")
         logger.info(f"AI Model: {settings.openrouter_model}")
         logger.info(f"Alerts: Discord={settings.discord_enabled}, Email={settings.email_enabled}")
+        logger.info(f"Strategy Mode: {self.strategy_mode}")
+        logger.info(f"Registered Strategies: {self.strategy_engine.list_strategies()}")
         logger.info("")
         
         # Connect to exchange
@@ -508,12 +526,50 @@ class TradingBot:
             return
         
         data = await self._fetch_market_data()
-        
+
+        # Multi-strategy engine: evaluate regime and get signal (Sprint 22)
+        if self.strategy_mode == "auto" or self.strategy_mode in StrategyRegistry.list_all():
+            prev_strategy = self.strategy_engine.active_strategy_name
+            candles = data["indicators_df"].reset_index().to_dict("records")
+            latest = data["indicators_df"].iloc[-1]
+            engine_indicators = {
+                "ema_8": float(latest.get("ema_12", current_price)),
+                "ema_21": float(latest.get("ema_26", current_price)),
+                "rsi_14": float(latest.get("rsi", 50)),
+                "bb_upper": float(latest.get("bb_upper", current_price * 1.02)),
+                "bb_lower": float(latest.get("bb_lower", current_price * 0.98)),
+                "bb_middle": float(latest.get("bb_middle", current_price)),
+                "atr": float(latest.get("atr", current_price * 0.01)),
+                "adx": 0,
+                "highest_20": float(data["indicators_df"]["high"].rolling(20).max().iloc[-1]) if len(data["indicators_df"]) >= 20 else current_price,
+                "lowest_20": float(data["indicators_df"]["low"].rolling(20).min().iloc[-1]) if len(data["indicators_df"]) >= 20 else current_price,
+                "volume_sma": float(data["indicators_df"]["volume"].rolling(20).mean().iloc[-1]) if len(data["indicators_df"]) >= 20 else 0,
+            }
+            engine_signal = self.strategy_engine.get_signal(candles, engine_indicators, current_price)
+
+            # Alert on strategy switch
+            if self.strategy_engine.active_strategy_name != prev_strategy and prev_strategy is not None:
+                await self.alert_manager.send_custom_alert(
+                    title="Strategy Switch",
+                    message=(
+                        f"Regime: {self.strategy_engine.current_regime.value if self.strategy_engine.current_regime else 'N/A'}\n"
+                        f"{prev_strategy} -> {self.strategy_engine.active_strategy_name}"
+                    ),
+                    level=AlertLevel.INFO,
+                )
+
+            if engine_signal:
+                logger.info(
+                    f"Engine signal: {engine_signal.get('side', 'N/A')} from "
+                    f"{engine_signal.get('strategy', 'N/A')} "
+                    f"(regime={engine_signal.get('regime', 'N/A')})"
+                )
+
         signals = self.strategy.calculate_signals(
             data["indicators_df"],
             current_price,
         )
-        
+
         for signal in signals:
             trade = self.strategy.execute_paper_trade(signal)
             if trade["status"] == "filled":
@@ -648,11 +704,16 @@ class TradingBot:
             BotState.PAUSED: "⏸️",
         }.get(self.state, "❓")
         
+        engine_info = self.strategy_engine.get_status()
+        active_strat = engine_info.get("active_strategy", "N/A")
+        regime = engine_info.get("current_regime", "N/A")
+
         logger.info(
             f"📊 Status | {state_emoji} {self.state.value.upper()} | "
             f"Price: ${current_price:,.2f} | "
             f"Trades: {paper.get('trades_count', 0)} | "
             f"Value: ${paper.get('total_value', 10000):,.2f} | "
+            f"Strategy: {active_strat} | Regime: {regime} | "
             f"Runtime: {runtime}"
         )
     
@@ -760,6 +821,11 @@ class TradingBot:
             )
             
             write_state(state)
+
+            # Write strategy engine status alongside shared state
+            engine_status = self.strategy_engine.get_status()
+            state_dict = state.__dict__ if hasattr(state, '__dict__') else {}
+            state_dict["strategy_engine"] = engine_status
         except Exception as e:
             logger.debug(f"Failed to write shared state: {e}")
 
@@ -821,6 +887,14 @@ async def run_bot():
     """Run the trading bot."""
     use_optimized = "--optimize" in sys.argv
 
+    # Parse --strategy flag (default: "auto" for regime-based multi-strategy)
+    strategy_mode = "auto"
+    for arg in sys.argv:
+        if arg.startswith("--strategy="):
+            strategy_mode = arg.split("=", 1)[1]
+        elif arg == "--strategy" and sys.argv.index(arg) + 1 < len(sys.argv):
+            strategy_mode = sys.argv[sys.argv.index(arg) + 1]
+
     bot = TradingBot(
         symbol="BTC/USDT",
         config=AIGridConfig(
@@ -836,6 +910,7 @@ async def run_bot():
             risk_tolerance="medium",
         ),
         use_optimized=use_optimized,
+        strategy_mode=strategy_mode,
     )
     
     loop = asyncio.get_event_loop()

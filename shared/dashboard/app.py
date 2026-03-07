@@ -447,6 +447,11 @@ def _render_overview(status: dict | None):
 
     st.divider()
 
+    # Strategy Engine (Sprint 22)
+    _render_strategy_section(status)
+
+    st.divider()
+
     # Quick stats
     col1, col2 = st.columns(2)
 
@@ -465,6 +470,63 @@ def _render_overview(status: dict | None):
             st.text(f"Direction: {config.get('direction', 'both')}")
             st.text(f"Leverage: {config.get('leverage', '1.0')}x")
             st.text(f"AI Enabled: {'Yes' if config.get('ai_enabled') else 'No'}")
+
+
+def _render_strategy_section(status: dict | None):
+    """Render Strategy Engine section in Overview (Sprint 22)."""
+    st.subheader("🧠 Strategy Engine")
+
+    strategy_engine = status.get("strategy_engine") if status else None
+
+    if not strategy_engine:
+        # Fallback: try fetching from API
+        strategy_engine = fetch_api("/api/bot/strategy-engine")
+
+    if not strategy_engine:
+        st.info("Strategy engine data not available")
+        return
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        active = strategy_engine.get("active_strategy", "N/A")
+        st.metric("Active Strategy", active)
+
+    with col2:
+        regime = strategy_engine.get("current_regime", "N/A")
+        regime_emoji = {
+            "trending_up": "📈",
+            "trending_down": "📉",
+            "ranging": "↔️",
+            "high_volatility": "🌊",
+            "low_volatility": "😴",
+            "breakout": "💥",
+        }.get(regime, "❓")
+        st.metric("Market Regime", f"{regime_emoji} {regime}")
+
+    with col3:
+        strategies = strategy_engine.get("registered_strategies", [])
+        st.metric("Strategies Loaded", len(strategies))
+
+    with col4:
+        switches = strategy_engine.get("strategy_switches", 0)
+        st.metric("Strategy Switches", switches)
+
+    # Strategy switch history
+    history = strategy_engine.get("switch_history", [])
+    if history:
+        with st.expander("Recent Strategy Switches"):
+            for entry in reversed(history[-5:]):
+                st.text(
+                    f"{entry.get('from', '?')} -> {entry.get('to', '?')} "
+                    f"(regime={entry.get('regime', '?')}, RSI={entry.get('rsi', 0):.1f})"
+                )
+
+    # Registered strategies list
+    if strategies:
+        with st.expander("Registered Strategies"):
+            for s in strategies:
+                st.text(f"  - {s}")
 
 
 def _render_chart_tab(candle_chart: CandlestickChart, status: dict | None):
