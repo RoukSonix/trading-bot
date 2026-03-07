@@ -9,25 +9,21 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-        cache: 'pip'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-    - name: Install dependencies
-      run: |
-        pip install -r binance-bot/requirements.txt
-        pip install -e binance-bot/
+      - name: Install dependencies
+        run: |
+          pip install -r binance-bot/requirements.txt
+          pip install -e binance-bot/
 
-    - name: Run tests
-      run: pytest tests/ -v --cov=binance-bot/src --cov=shared --tb=short
-
-    - name: Upload coverage
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: coverage-report
-        path: htmlcov/
+      - name: Run tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: pytest tests/ -v --tb=short

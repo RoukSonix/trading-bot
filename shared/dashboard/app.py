@@ -283,13 +283,14 @@ def main():
             st.info("Start the API server with:\n`uvicorn shared.api.main:app`")
     
     # Main content
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "📊 Overview",
         "📈 Trading Chart",
         "🔲 Grid Trading",
         "💰 PnL Analysis",
         "📋 Trade History",
         "📑 Orders",
+        "🧪 Backtest",
     ])
     
     # Initialize components
@@ -316,7 +317,10 @@ def main():
     
     with tab6:
         _render_orders_tab(order_book)
-    
+
+    with tab7:
+        _render_backtest_tab()
+
     # Auto refresh
     if auto_refresh:
         time.sleep(refresh_interval)
@@ -712,6 +716,115 @@ def _render_orders_tab(order_book: OrderBook):
         order_book.render(orders, on_cancel=handle_cancel)
     else:
         st.info("No open orders")
+
+
+def _render_backtest_tab():
+    """Render backtest tab with equity curve, metrics, and buy-and-hold comparison."""
+    st.header("🧪 Backtest")
+
+    # Import here to avoid circular imports / heavy deps at startup
+    from tests.conftest import make_ohlcv_df
+    from shared.backtest.engine import BacktestEngine, BacktestResult
+    from shared.backtest.benchmark import StrategyBenchmark
+    from shared.backtest.charts import BacktestCharts
+    from binance_bot.strategies import GridStrategy, GridConfig
+
+    # Controls
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        bt_symbol = st.text_input("Symbol", value="BTC/USDT", key="bt_symbol")
+    with col2:
+        bt_start = st.date_input("Start Date", value=pd.Timestamp("2025-01-01"), key="bt_start")
+    with col3:
+        bt_end = st.date_input("End Date", value=pd.Timestamp("2025-04-10"), key="bt_end")
+
+    col4, col5, col6 = st.columns(3)
+    with col4:
+        bt_levels = st.slider("Grid Levels", 3, 30, 10, key="bt_levels")
+    with col5:
+        bt_spacing = st.slider("Grid Spacing %", 0.5, 5.0, 1.5, step=0.1, key="bt_spacing")
+    with col6:
+        bt_amount = st.number_input("Amount/Level", value=0.001, format="%.4f", key="bt_amount")
+
+    if st.button("Run Backtest", type="primary", key="bt_run"):
+        with st.spinner("Running backtest..."):
+            # Generate synthetic data for demo (in production, fetch from exchange)
+            n_candles = max(30, (pd.Timestamp(bt_end) - pd.Timestamp(bt_start)).days)
+            data = make_ohlcv_df(n=n_candles, base_price=50000.0, trend=0.001, seed=42)
+
+            config = GridConfig(
+                grid_levels=bt_levels,
+                grid_spacing_pct=bt_spacing,
+                amount_per_level=bt_amount,
+            )
+            strategy = GridStrategy(symbol=bt_symbol, config=config)
+
+            engine = BacktestEngine(
+                symbol=bt_symbol,
+                timeframe="1d",
+                initial_balance=10000.0,
+            )
+            result = engine.run(strategy=strategy, data=data, params={"name": "Dashboard Run"})
+
+            # Store result in session state
+            st.session_state["bt_result"] = result
+            st.session_state["bt_data"] = data
+
+    # Display results if available
+    result = st.session_state.get("bt_result")
+    bt_data = st.session_state.get("bt_data")
+    if result is None:
+        st.info("Configure parameters and click 'Run Backtest' to start.")
+        return
+
+    # Metrics row
+    m1, m2, m3, m4 = st.columns(4)
+    with m1:
+        st.metric("Total Return", f"{result.total_return:+.2f}%")
+    with m2:
+        st.metric("Win Rate", f"{result.win_rate:.1f}%")
+    with m3:
+        st.metric("Sharpe Ratio", f"{result.sharpe_ratio:.2f}")
+    with m4:
+        st.metric("Max Drawdown", f"{result.max_drawdown:.2f}%")
+
+    m5, m6, m7, m8 = st.columns(4)
+    with m5:
+        st.metric("Total Trades", result.total_trades)
+    with m6:
+        st.metric("Profit Factor", f"{result.profit_factor:.2f}")
+    with m7:
+        st.metric("Avg Win", f"${result.avg_win:,.2f}")
+    with m8:
+        st.metric("Avg Loss", f"${result.avg_loss:,.2f}")
+
+    st.divider()
+
+    # Charts
+    charts = BacktestCharts()
+
+    col_eq, col_dd = st.columns(2)
+    with col_eq:
+        st.plotly_chart(charts.equity_curve(result), use_container_width=True)
+    with col_dd:
+        st.plotly_chart(charts.drawdown_chart(result), use_container_width=True)
+
+    st.plotly_chart(charts.monthly_returns_heatmap(result), use_container_width=True)
+    st.plotly_chart(charts.trade_distribution(result), use_container_width=True)
+
+    # Buy & Hold comparison
+    st.divider()
+    st.subheader("vs Buy & Hold")
+    if bt_data is not None:
+        bench = StrategyBenchmark()
+        comp = bench.vs_buy_and_hold(result, bt_data)
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Strategy Return", f"{comp['strategy']['total_return']:+.2f}%")
+        with c2:
+            st.metric("Buy & Hold Return", f"{comp['buy_and_hold']['total_return']:+.2f}%")
+        with c3:
+            st.metric("Outperformance", f"{comp['outperformance']:+.2f}%")
 
 
 if __name__ == "__main__":
