@@ -247,7 +247,11 @@ class GridStrategy(BaseStrategy):
                         if position.amount <= 0:
                             position.amount = 0
                             position.entry_price = 0
-                    position.side = "long" if position.amount > 0 else "flat"
+                    # Use threshold to avoid floating point errors
+                    position.side = "long" if position.amount > 0.00000001 else "flat"
+                    if position.amount < 0.00000001:
+                        position.amount = 0
+                        position.entry_price = 0
                 else:
                     # Create new position
                     position = Position(
