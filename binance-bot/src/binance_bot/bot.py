@@ -7,10 +7,12 @@
 """
 
 import asyncio
+import json
 import signal
 import sys
 from datetime import datetime, timedelta
 from enum import Enum
+from pathlib import Path
 from typing import Optional
 
 from loguru import logger
@@ -44,14 +46,25 @@ class BotState(str, Enum):
 class TradingBot:
     """Main trading bot orchestrator with state management."""
     
+    # Default path for optimized parameters
+    OPTIMIZED_PARAMS_PATH = Path(__file__).resolve().parent.parent.parent.parent / "data" / "optimized_params.json"
+
     def __init__(
         self,
         symbol: str = "BTC/USDT",
         config: Optional[AIGridConfig] = None,
+        use_optimized: bool = False,
     ):
-        """Initialize trading bot."""
+        """Initialize trading bot.
+
+        Args:
+            symbol: Trading pair.
+            config: AI grid configuration. If None, uses defaults.
+            use_optimized: If True, load params from data/optimized_params.json.
+        """
         self.symbol = symbol
-        self.config = config or AIGridConfig(
+
+        base_config = config or AIGridConfig(
             grid_levels=5,
             grid_spacing_pct=1.0,
             amount_per_level=0.0001,
@@ -63,6 +76,11 @@ class TradingBot:
             min_confidence=50,
             risk_tolerance="medium",
         )
+
+        if use_optimized:
+            base_config = self._apply_optimized_params(base_config)
+
+        self.config = base_config
         
         self.strategy: Optional[AIGridStrategy] = None
         self.running = False
@@ -118,6 +136,37 @@ class TradingBot:
         self.rules_engine = get_rules_engine()
         self.rules_engine.set_alert_callback(self._handle_rule_alert)
     
+    @staticmethod
+    def _apply_optimized_params(config: AIGridConfig) -> AIGridConfig:
+        """Load optimized params from JSON and apply to config.
+
+        Falls back to the original config if the file doesn't exist.
+        """
+        path = TradingBot.OPTIMIZED_PARAMS_PATH
+        if not path.exists():
+            logger.warning(f"Optimized params not found at {path}, using defaults")
+            return config
+
+        try:
+            with open(path) as f:
+                params = json.load(f)
+
+            if "grid_levels" in params:
+                config.grid_levels = int(params["grid_levels"])
+            if "grid_spacing_pct" in params:
+                config.grid_spacing_pct = float(params["grid_spacing_pct"])
+            if "amount_per_level" in params:
+                config.amount_per_level = float(params["amount_per_level"])
+
+            logger.info(
+                f"Loaded optimized params: levels={config.grid_levels}, "
+                f"spacing={config.grid_spacing_pct}%, amount={config.amount_per_level}"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to load optimized params: {e}")
+
+        return config
+
     def setup_logging(self):
         """Configure logging."""
         logger.remove()
@@ -770,6 +819,8 @@ class TradingBot:
 
 async def run_bot():
     """Run the trading bot."""
+    use_optimized = "--optimize" in sys.argv
+
     bot = TradingBot(
         symbol="BTC/USDT",
         config=AIGridConfig(
@@ -784,6 +835,7 @@ async def run_bot():
             min_confidence=50,
             risk_tolerance="medium",
         ),
+        use_optimized=use_optimized,
     )
     
     loop = asyncio.get_event_loop()

@@ -94,18 +94,32 @@ class Backtester:
         data: pd.DataFrame,
         price_column: str = "close",
         config_name: str = "default",
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
     ) -> BacktestResult:
         """Run backtest on historical data.
-        
+
         Args:
             strategy: Strategy to test
             data: OHLCV DataFrame with datetime index
             price_column: Column to use for price
             config_name: Name for this config (for comparison)
-            
+            start_date: Optional start date filter (ISO format string)
+            end_date: Optional end date filter (ISO format string)
+
         Returns:
             BacktestResult with performance metrics
         """
+        # Apply date range filter
+        if start_date is not None:
+            data = data[data.index >= pd.Timestamp(start_date)]
+        if end_date is not None:
+            data = data[data.index <= pd.Timestamp(end_date)]
+
+        if data.empty:
+            logger.warning("No data after date filtering.")
+            return BacktestResult(config_name=config_name)
+
         logger.info(f"Running backtest '{config_name}' on {len(data)} candles...")
         
         # Initialize
@@ -236,6 +250,44 @@ class Backtester:
         
         return result
     
+    def run_with_params(
+        self,
+        params: dict,
+        data: pd.DataFrame,
+        symbol: str = "BTC/USDT",
+        price_column: str = "close",
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> BacktestResult:
+        """Run backtest with a flat parameter dict (convenience for optimizers).
+
+        Args:
+            params: Dict with keys like 'grid_levels', 'grid_spacing_pct',
+                    'amount_per_level'.
+            data: OHLCV DataFrame.
+            symbol: Trading pair.
+            price_column: Column for price.
+            start_date: Optional start date filter.
+            end_date: Optional end date filter.
+
+        Returns:
+            BacktestResult with performance metrics.
+        """
+        config = GridConfig(
+            grid_levels=params.get("grid_levels", 10),
+            grid_spacing_pct=params.get("grid_spacing_pct", 1.0),
+            amount_per_level=params.get("amount_per_level", 0.001),
+        )
+        strategy = GridStrategy(symbol=symbol, config=config)
+        return self.run(
+            strategy=strategy,
+            data=data,
+            price_column=price_column,
+            config_name="params_run",
+            start_date=start_date,
+            end_date=end_date,
+        )
+
     def run_comparison(
         self,
         configs: List[Dict],

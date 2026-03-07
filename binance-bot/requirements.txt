@@ -39,6 +39,9 @@ prometheus_client>=0.20.0
 # Factor Analysis (Sprint 15)
 # (uses pandas, numpy, ta already listed above)
 
+# Hyperparameter Optimization (Sprint 18)
+optuna>=3.5.0
+
 # Vector DB & News Sentiment (Sprint 16)
 langchain-ollama>=0.3.0
 chromadb>=0.5.0
