@@ -107,11 +107,11 @@ async def get_pnl_summary(
         
         logs = query.all()
         
-        realized_pnl = sum(log.realized_pnl or 0 for log in logs)
+        realized_pnl = sum(float(log.pnl or 0) for log in logs)
         unrealized_pnl = 0  # Would need live position data
-        
-        winning = [log for log in logs if (log.realized_pnl or 0) > 0]
-        losing = [log for log in logs if (log.realized_pnl or 0) < 0]
+
+        winning = [log for log in logs if float(log.pnl or 0) > 0]
+        losing = [log for log in logs if float(log.pnl or 0) < 0]
         
         total_trades = len(logs)
         win_rate = len(winning) / total_trades if total_trades > 0 else 0
@@ -141,17 +141,17 @@ async def get_pnl_history(
         if symbol:
             query = query.filter(TradeLog.symbol == symbol)
         
-        logs = query.order_by(TradeLog.exit_time.asc()).all()
-        
+        logs = query.order_by(TradeLog.timestamp.asc()).all()
+
         # Cumulative PnL
         cumulative = 0
         history = []
         for log in logs:
-            if log.exit_time and log.realized_pnl is not None:
-                cumulative += log.realized_pnl
+            if log.pnl is not None:
+                cumulative += log.pnl
                 history.append({
-                    "timestamp": log.exit_time.isoformat(),
-                    "pnl": log.realized_pnl,
+                    "timestamp": log.datetime_utc.isoformat(),
+                    "pnl": float(log.pnl),
                     "cumulative_pnl": cumulative,
                     "symbol": log.symbol,
                 })

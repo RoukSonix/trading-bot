@@ -130,6 +130,36 @@ class Settings(BaseSettings):
         description="Time to send daily summary (UTC, HH:MM format)"
     )
     
+    # Risk Management
+    risk_per_trade: float = Field(
+        default=0.02,
+        description="Risk per trade as fraction (e.g., 0.02 = 2%)"
+    )
+    risk_max_position_pct: float = Field(
+        default=0.10,
+        description="Max position size as fraction of portfolio"
+    )
+    risk_daily_loss_limit: float = Field(
+        default=0.05,
+        description="Max daily loss as fraction (e.g., 0.05 = 5%)"
+    )
+    risk_max_drawdown_limit: float = Field(
+        default=0.10,
+        description="Max drawdown limit as fraction"
+    )
+    risk_max_consecutive_losses: int = Field(
+        default=5,
+        description="Max consecutive losing trades before halt"
+    )
+    risk_stop_loss_pct: float = Field(
+        default=0.02,
+        description="Default stop-loss percentage"
+    )
+    risk_take_profit_pct: float = Field(
+        default=0.03,
+        description="Default take-profit percentage"
+    )
+
     # Logging
     log_level: str = Field(default="INFO", description="Logging level")
     

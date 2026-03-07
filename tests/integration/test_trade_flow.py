@@ -60,14 +60,14 @@ class TestFullTradeFlow:
         assert len(trades) == 1
         assert trades[0].symbol == "BTC/USDT"
         assert trades[0].side == "buy"
-        assert trades[0].price == 49500.0
-        assert trades[0].amount == 0.01
+        assert float(trades[0].price) == 49500.0
+        assert float(trades[0].amount) == 0.01
 
         position = session.query(Position).filter_by(symbol="BTC/USDT").first()
         assert position is not None
         assert position.side == "long"
-        assert position.entry_price == 49500.0
-        assert position.amount == 0.01
+        assert float(position.entry_price) == 49500.0
+        assert float(position.amount) == 0.01
         session.close()
 
     def test_buy_then_sell_updates_position(self, trade_db, strategy):
@@ -100,9 +100,9 @@ class TestFullTradeFlow:
         position = session.query(Position).filter_by(symbol="BTC/USDT").first()
         assert position is not None
         assert position.side == "flat"
-        assert position.amount == 0
+        assert float(position.amount) == 0
         # PnL = (50500 - 49500) * 0.01 = 10.0
-        assert position.realized_pnl == pytest.approx(10.0)
+        assert float(position.realized_pnl) == pytest.approx(10.0)
         session.close()
 
     def test_multiple_buys_average_entry(self, trade_db, strategy):
@@ -119,9 +119,9 @@ class TestFullTradeFlow:
 
         session = Session()
         position = session.query(Position).filter_by(symbol="BTC/USDT").first()
-        assert position.amount == pytest.approx(0.02)
+        assert float(position.amount) == pytest.approx(0.02)
         # Average: (50000*0.01 + 48000*0.01) / 0.02 = 49000
-        assert position.entry_price == pytest.approx(49000.0)
+        assert float(position.entry_price) == pytest.approx(49000.0)
         assert position.side == "long"
         session.close()
 
@@ -173,7 +173,7 @@ class TestFullTradeFlow:
         session = Session()
         position = session.query(Position).filter_by(symbol="BTC/USDT").first()
         assert position.side == "long"
-        assert position.amount == pytest.approx(0.03)
+        assert float(position.amount) == pytest.approx(0.03)
         session.close()
 
     def test_paper_balance_consistency(self, trade_db, strategy):

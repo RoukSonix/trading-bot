@@ -1,5 +1,6 @@
 """AI Trading Agent using LangChain + OpenRouter."""
 
+import asyncio
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -91,6 +92,7 @@ class TradingAgent:
             openai_api_base=settings.openrouter_base_url,
             temperature=settings.ai_temperature,
             max_tokens=settings.ai_max_tokens,
+            timeout=30,
             default_headers={
                 "HTTP-Referer": "https://github.com/trading-bot",
                 "X-Title": "Trading Bot",
@@ -107,18 +109,24 @@ class TradingAgent:
         return self.llm is not None
     
     async def _call_llm(self, prompt: str, system: str = SYSTEM_PROMPT) -> str:
-        """Make an LLM call."""
+        """Make an LLM call with timeout protection."""
         if not self.is_available:
             raise RuntimeError("AI not available. Set OPENROUTER_API_KEY in .env")
-        
+
         messages = [
             SystemMessage(content=system),
             HumanMessage(content=prompt),
         ]
-        
+
         try:
-            response = await self.llm.ainvoke(messages)
+            response = await asyncio.wait_for(
+                self.llm.ainvoke(messages),
+                timeout=30,
+            )
             return response.content
+        except asyncio.TimeoutError:
+            logger.error("LLM call timed out after 30s")
+            raise
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
             raise

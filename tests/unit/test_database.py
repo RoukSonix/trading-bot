@@ -32,10 +32,10 @@ class TestTradeModel:
         assert result is not None
         assert result.symbol == "BTC/USDT"
         assert result.side == "buy"
-        assert result.price == 50000.0
-        assert result.amount == 0.001
-        assert result.cost == 50.0
-        assert result.fee == 0.05
+        assert float(result.price) == 50000.0
+        assert float(result.amount) == 0.001
+        assert float(result.cost) == 50.0
+        assert float(result.fee) == 0.05
         assert result.order_id == "test_001"
 
     def test_trade_repr(self):
@@ -87,8 +87,8 @@ class TestPositionModel:
         assert result is not None
         assert result.symbol == "BTC/USDT"
         assert result.side == "long"
-        assert result.entry_price == 50000.0
-        assert result.amount == 0.01
+        assert float(result.entry_price) == 50000.0
+        assert float(result.amount) == 0.01
 
     def test_update_position(self, db_session):
         position = Position(
@@ -107,9 +107,9 @@ class TestPositionModel:
         db_session.commit()
 
         result = db_session.query(Position).filter_by(symbol="BTC/USDT").first()
-        assert result.amount == 0.02
-        assert result.entry_price == 49500.0
-        assert result.unrealized_pnl == 100.0
+        assert float(result.amount) == 0.02
+        assert float(result.entry_price) == 49500.0
+        assert float(result.unrealized_pnl) == 100.0
 
     def test_position_repr(self):
         position = Position(
@@ -240,8 +240,8 @@ class TestTradeLog:
         d = log.to_dict()
         assert d["symbol"] == "BTC/USDT"
         assert d["side"] == "sell"
-        assert d["price"] == 51000.0
-        assert d["pnl"] == 1.0
+        assert float(d["price"]) == 51000.0
+        assert float(d["pnl"]) == 1.0
         assert d["strategy"] == "grid"
         assert "datetime" in d
 

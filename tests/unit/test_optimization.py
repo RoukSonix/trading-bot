@@ -60,10 +60,10 @@ class TestPerformanceMetrics:
         assert sortino > 0
 
     def test_sortino_ratio_no_downside(self):
-        """Sortino is inf if no negative returns."""
+        """Sortino is 0.0 (finite) if no negative returns (BUG-007 fix)."""
         returns = [0.01, 0.02, 0.015, 0.01]
         sortino = PerformanceMetrics.sortino_ratio(returns)
-        assert sortino == float("inf")
+        assert sortino == 0.0
 
     def test_sortino_ratio_insufficient_data(self):
         """Sortino returns 0 when < 2 data points."""

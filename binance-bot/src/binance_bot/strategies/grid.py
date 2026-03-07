@@ -41,6 +41,9 @@ class GridConfig:
     max_position: float = 0.1       # Maximum total position size
     stop_loss_pct: float = 10.0     # Stop loss percentage from entry
 
+    # Grid growth limit
+    max_levels: int = 50            # Maximum total grid levels to prevent unbounded growth
+
     # Bi-directional grid (Sprint 20)
     direction: str = "both"         # "long", "short", "both"
     leverage: float = 1.0           # 1x = spot, 2x-3x = margin
@@ -436,6 +439,12 @@ class GridStrategy(BaseStrategy):
         When a sell fills, create a buy below it.
         Preserves the short flag (negative amount) for short-side levels.
         """
+        if len(self.levels) >= self.config.max_levels:
+            logger.warning(
+                f"Grid at max levels ({self.config.max_levels}), skipping new level creation"
+            )
+            return
+
         spacing = current_price * (self.config.grid_spacing_pct / 100)
 
         if filled_level.side == SignalType.BUY:
@@ -778,17 +787,17 @@ class GridStrategy(BaseStrategy):
                               price: float, amount: float, cost: float):
         """Update position for a long trade."""
         if signal_type == SignalType.BUY:
-            total_cost = position.entry_price * position.amount + cost
-            position.amount += amount
+            total_cost = float(position.entry_price) * float(position.amount) + cost
+            position.amount = float(position.amount) + amount
             position.entry_price = total_cost / position.amount if position.amount > 0 else 0
         else:  # SELL
-            position.realized_pnl += (price - position.entry_price) * amount
-            position.amount -= amount
+            position.realized_pnl = float(position.realized_pnl or 0) + (price - float(position.entry_price)) * amount
+            position.amount = float(position.amount) - amount
             if position.amount <= 0:
                 position.amount = 0
                 position.entry_price = 0
-        position.side = "long" if position.amount > 0.00000001 else "flat"
-        if position.amount < 0.00000001:
+        position.side = "long" if float(position.amount) > 0.00000001 else "flat"
+        if float(position.amount) < 0.00000001:
             position.amount = 0
             position.entry_price = 0
 
@@ -797,19 +806,19 @@ class GridStrategy(BaseStrategy):
         """Update position for a short trade."""
         if signal_type == SignalType.SELL:
             # Opening short — track short entry
-            short_amount = position.short_amount if hasattr(position, 'short_amount') and position.short_amount else 0
-            short_entry = position.short_entry if hasattr(position, 'short_entry') and position.short_entry else 0
+            short_amount = float(position.short_amount) if hasattr(position, 'short_amount') and position.short_amount else 0
+            short_entry = float(position.short_entry) if hasattr(position, 'short_entry') and position.short_entry else 0
             total_cost = short_entry * short_amount + price * amount
             new_amount = short_amount + amount
             position.short_amount = new_amount
             position.short_entry = total_cost / new_amount if new_amount > 0 else 0
-            position.direction = "both" if position.amount > 0.00000001 else "short"
+            position.direction = "both" if float(position.amount) > 0.00000001 else "short"
         else:  # BUY (cover)
-            short_amount = position.short_amount if hasattr(position, 'short_amount') and position.short_amount else 0
-            short_entry = position.short_entry if hasattr(position, 'short_entry') and position.short_entry else 0
+            short_amount = float(position.short_amount) if hasattr(position, 'short_amount') and position.short_amount else 0
+            short_entry = float(position.short_entry) if hasattr(position, 'short_entry') and position.short_entry else 0
             if short_amount > 0:
                 pnl = (short_entry - price) * amount
-                position.realized_pnl = (position.realized_pnl or 0) + pnl
+                position.realized_pnl = float(position.realized_pnl or 0) + pnl
                 position.short_amount = short_amount - amount
                 if position.short_amount < 0.00000001:
                     position.short_amount = 0

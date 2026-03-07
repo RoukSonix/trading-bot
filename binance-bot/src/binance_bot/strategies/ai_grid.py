@@ -7,6 +7,8 @@ Combines Grid Trading with AI-powered:
 - Risk assessment
 """
 
+import json
+import re
 from dataclasses import dataclass
 from typing import Optional
 import pandas as pd
@@ -345,54 +347,16 @@ Provide a brief assessment:
 3. Should we GO_SHORT (increase short exposure) or REDUCE_LONG?
 4. Any risk concerns?
 
-Format your response as:
-ACTION: CONTINUE/PAUSE/STOP/ADJUST/GO_SHORT/REDUCE_LONG
-NEW_LOWER: <price or N/A>
-NEW_UPPER: <price or N/A>
-RISK: LOW/MEDIUM/HIGH
-REASON: <one line explanation>
+Respond with ONLY a JSON object (no markdown, no extra text):
+{{"action": "CONTINUE|PAUSE|STOP|ADJUST|GO_SHORT|REDUCE_LONG", "new_lower": null, "new_upper": null, "risk": "LOW|MEDIUM|HIGH", "reason": "one line explanation"}}
 """
-        
+
         try:
             from shared.ai import trading_agent
             response = await trading_agent._call_llm(prompt)
-            
-            # Parse response
-            result = {
-                "action": "CONTINUE",
-                "new_lower": None,
-                "new_upper": None,
-                "risk": "MEDIUM",
-                "reason": response[:200],
-                "raw_response": response,
-            }
-            
-            for line in response.split('\n'):
-                line = line.strip()
-                if line.startswith('ACTION:'):
-                    action = line.split(':')[1].strip().upper()
-                    if action in ['CONTINUE', 'PAUSE', 'STOP', 'ADJUST', 'GO_SHORT', 'REDUCE_LONG']:
-                        result["action"] = action
-                elif line.startswith('NEW_LOWER:'):
-                    val = line.split(':')[1].strip().replace('$', '').replace(',', '')
-                    if val != 'N/A':
-                        try:
-                            result["new_lower"] = float(val)
-                        except ValueError:
-                            pass
-                elif line.startswith('NEW_UPPER:'):
-                    val = line.split(':')[1].strip().replace('$', '').replace(',', '')
-                    if val != 'N/A':
-                        try:
-                            result["new_upper"] = float(val)
-                        except ValueError:
-                            pass
-                elif line.startswith('RISK:'):
-                    risk = line.split(':')[1].strip().upper()
-                    if risk in ['LOW', 'MEDIUM', 'HIGH']:
-                        result["risk"] = risk
-                elif line.startswith('REASON:'):
-                    result["reason"] = line.split(':', 1)[1].strip()
+
+            # Parse response - try JSON first, fall back to line parsing
+            result = self._parse_review_response(response)
             
             logger.info(f"📋 AI Review: {result['action']} (Risk: {result['risk']})")
             logger.info(f"   Reason: {result['reason']}")
@@ -423,6 +387,76 @@ REASON: <one line explanation>
             logger.error(f"AI review failed: {e}")
             return {"action": "CONTINUE", "reason": f"AI error: {e}"}
     
+    @staticmethod
+    def _parse_review_response(response: str) -> dict:
+        """Parse AI review response. Try JSON first, fall back to line parsing."""
+        result = {
+            "action": "CONTINUE",
+            "new_lower": None,
+            "new_upper": None,
+            "risk": "MEDIUM",
+            "reason": response[:200],
+            "raw_response": response,
+        }
+
+        valid_actions = {"CONTINUE", "PAUSE", "STOP", "ADJUST", "GO_SHORT", "REDUCE_LONG"}
+        valid_risks = {"LOW", "MEDIUM", "HIGH"}
+
+        # Try JSON parsing first
+        try:
+            # Extract JSON from response (may be wrapped in markdown code block)
+            json_match = re.search(r'\{[^{}]+\}', response, re.DOTALL)
+            if json_match:
+                parsed = json.loads(json_match.group())
+                action = str(parsed.get("action", "")).upper()
+                if action in valid_actions:
+                    result["action"] = action
+                risk = str(parsed.get("risk", "")).upper()
+                if risk in valid_risks:
+                    result["risk"] = risk
+                if parsed.get("reason"):
+                    result["reason"] = str(parsed["reason"])
+                for key in ("new_lower", "new_upper"):
+                    val = parsed.get(key)
+                    if val is not None and val != "N/A":
+                        try:
+                            result[key] = float(str(val).replace("$", "").replace(",", ""))
+                        except (ValueError, TypeError):
+                            pass
+                return result
+        except (json.JSONDecodeError, AttributeError):
+            pass
+
+        # Fallback: line-by-line parsing
+        for line in response.split("\n"):
+            line = line.strip()
+            if line.startswith("ACTION:"):
+                action = line.split(":", 1)[1].strip().upper()
+                if action in valid_actions:
+                    result["action"] = action
+            elif line.startswith("NEW_LOWER:"):
+                val = line.split(":", 1)[1].strip().replace("$", "").replace(",", "")
+                if val != "N/A":
+                    try:
+                        result["new_lower"] = float(val)
+                    except ValueError:
+                        pass
+            elif line.startswith("NEW_UPPER:"):
+                val = line.split(":", 1)[1].strip().replace("$", "").replace(",", "")
+                if val != "N/A":
+                    try:
+                        result["new_upper"] = float(val)
+                    except ValueError:
+                        pass
+            elif line.startswith("RISK:"):
+                risk = line.split(":", 1)[1].strip().upper()
+                if risk in valid_risks:
+                    result["risk"] = risk
+            elif line.startswith("REASON:"):
+                result["reason"] = line.split(":", 1)[1].strip()
+
+        return result
+
     def get_status(self) -> dict:
         """Get current strategy status including AI state."""
         status = super().get_status()

@@ -47,10 +47,10 @@ class PerformanceMetrics:
         arr = np.array(returns, dtype=np.float64)
         downside = arr[arr < 0]
         if len(downside) < 1:
-            return float("inf") if arr.mean() > 0 else 0.0
+            return 0.0
         downside_std = downside.std(ddof=1) if len(downside) > 1 else abs(downside[0])
         if downside_std == 0:
-            return float("inf") if arr.mean() > 0 else 0.0
+            return 0.0
         mean = arr.mean()
         annualized_return = mean * 252
         annualized_downside = downside_std * np.sqrt(252)

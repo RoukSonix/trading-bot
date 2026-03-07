@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
-from sqlalchemy import create_engine, Column, Integer, Float, String, DateTime, BigInteger, Index
+from sqlalchemy import create_engine, Column, Integer, Float, Numeric, String, DateTime, BigInteger, Index
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from loguru import logger
 
@@ -54,14 +54,14 @@ class Trade(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, index=True)
     side = Column(String(4), nullable=False)  # buy/sell
-    price = Column(Float, nullable=False)
-    amount = Column(Float, nullable=False)
-    cost = Column(Float, nullable=False)  # price * amount
-    fee = Column(Float, default=0)
+    price = Column(Numeric(precision=18, scale=8), nullable=False)
+    amount = Column(Numeric(precision=18, scale=8), nullable=False)
+    cost = Column(Numeric(precision=18, scale=8), nullable=False)  # price * amount
+    fee = Column(Numeric(precision=18, scale=8), default=0)
     order_id = Column(String(50), nullable=True)
     timestamp = Column(BigInteger, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    
+
     def __repr__(self):
         return f"<Trade {self.side} {self.amount} {self.symbol} @ {self.price}>"
 
@@ -74,18 +74,18 @@ class Position(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, unique=True)
     side = Column(String(5), nullable=False)  # long/short/flat
-    entry_price = Column(Float, nullable=False)
-    amount = Column(Float, nullable=False)
-    unrealized_pnl = Column(Float, default=0)
-    realized_pnl = Column(Float, default=0)
+    entry_price = Column(Numeric(precision=18, scale=8), nullable=False)
+    amount = Column(Numeric(precision=18, scale=8), nullable=False)
+    unrealized_pnl = Column(Numeric(precision=18, scale=8), default=0)
+    realized_pnl = Column(Numeric(precision=18, scale=8), default=0)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Bi-directional fields (Sprint 20)
     direction = Column(String(5), default="long")  # "long", "short", "both"
-    long_amount = Column(Float, default=0)
-    short_amount = Column(Float, default=0)
-    long_entry = Column(Float, default=0)
-    short_entry = Column(Float, default=0)
+    long_amount = Column(Numeric(precision=18, scale=8), default=0)
+    short_amount = Column(Numeric(precision=18, scale=8), default=0)
+    long_entry = Column(Numeric(precision=18, scale=8), default=0)
+    short_entry = Column(Numeric(precision=18, scale=8), default=0)
 
     def __repr__(self):
         return f"<Position {self.side} {self.amount} {self.symbol}>"
@@ -111,10 +111,10 @@ class TradeLog(Base):
     timestamp = Column(BigInteger, nullable=False, index=True)  # Unix timestamp in ms
     symbol = Column(String(20), nullable=False, index=True)
     side = Column(String(4), nullable=False)  # buy/sell
-    price = Column(Float, nullable=False)
-    amount = Column(Float, nullable=False)
-    pnl = Column(Float, default=0)  # Realized PnL for this trade
-    fees = Column(Float, default=0)
+    price = Column(Numeric(precision=18, scale=8), nullable=False)
+    amount = Column(Numeric(precision=18, scale=8), nullable=False)
+    pnl = Column(Numeric(precision=18, scale=8), default=0)  # Realized PnL for this trade
+    fees = Column(Numeric(precision=18, scale=8), default=0)
     order_id = Column(String(50), nullable=True)
     strategy = Column(String(50), nullable=True)  # Strategy that generated trade
     notes = Column(String(255), nullable=True)

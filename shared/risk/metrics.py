@@ -125,7 +125,7 @@ class RiskMetrics:
         gross_profit = sum(t.pnl for t in self.winning_trades)
         gross_loss = abs(sum(t.pnl for t in self.losing_trades))
         if gross_loss == 0:
-            return float('inf') if gross_profit > 0 else 0.0
+            return 0.0
         return gross_profit / gross_loss
     
     @property
@@ -206,13 +206,13 @@ class RiskMetrics:
         negative_returns = [r for r in returns if r < 0]
         
         if not negative_returns:
-            return float('inf')
-        
+            return 0.0
+
         avg_return = statistics.mean(returns)
         downside_std = statistics.stdev(negative_returns) if len(negative_returns) > 1 else 0
-        
+
         if downside_std == 0:
-            return float('inf') if avg_return > 0 else 0.0
+            return 0.0
         
         # Annualize
         trades_per_year = len(self.trades) * (365 / period_days) if period_days > 0 else len(self.trades)

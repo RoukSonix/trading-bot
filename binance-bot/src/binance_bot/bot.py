@@ -20,8 +20,8 @@ from loguru import logger
 from shared.config import settings
 from binance_bot.core.exchange import exchange_client
 from shared.core.indicators import Indicators
-from binance_bot.strategies import AIGridStrategy, AIGridConfig
-from shared.risk import PositionSizer, SizingMethod, RiskLimits, RiskMetrics
+from binance_bot.strategies import AIGridStrategy, AIGridConfig, SignalType
+from shared.risk import PositionSizer, SizingMethod, RiskLimits, RiskMetrics, StopLossManager
 from binance_bot.core.emergency import EmergencyStop
 from shared.core.state import BotState as SharedBotState, write_state, read_state
 from shared.vector_db.news_fetcher import NewsFetcher
@@ -105,15 +105,19 @@ class TradingBot:
         # Risk Management
         self.position_sizer = PositionSizer(
             method=SizingMethod.FIXED_PERCENT,
-            risk_per_trade=0.02,  # 2% per trade
-            max_position_pct=0.10,  # Max 10% in one position
+            risk_per_trade=settings.risk_per_trade,
+            max_position_pct=settings.risk_max_position_pct,
         )
         self.risk_limits = RiskLimits(
-            daily_loss_limit=0.05,  # 5% max daily loss
-            max_drawdown_limit=0.10,  # 10% max drawdown
-            max_consecutive_losses=5,
+            daily_loss_limit=settings.risk_daily_loss_limit,
+            max_drawdown_limit=settings.risk_max_drawdown_limit,
+            max_consecutive_losses=settings.risk_max_consecutive_losses,
         )
         self.risk_metrics = RiskMetrics()
+        self.stop_loss_manager = StopLossManager(
+            default_stop_pct=settings.risk_stop_loss_pct,
+            default_tp_pct=settings.risk_take_profit_pct,
+        )
         self.trading_metrics = get_trading_metrics()
 
         # News Sentiment
@@ -565,6 +569,29 @@ class TradingBot:
                     f"(regime={engine_signal.get('regime', 'N/A')})"
                 )
 
+        # Check stop-loss / take-profit for tracked positions
+        sl_result = self.stop_loss_manager.check_position(self.symbol, current_price)
+        if sl_result["action"] in ("stop_loss", "take_profit"):
+            logger.warning(
+                f"{'🛑 Stop-loss' if sl_result['action'] == 'stop_loss' else '🎯 Take-profit'} "
+                f"triggered @ ${current_price:,.2f}, PnL: ${sl_result['pnl']:,.2f}"
+            )
+            self.risk_limits.record_trade(sl_result["pnl"], {
+                "symbol": self.symbol,
+                "side": "sell",
+                "price": current_price,
+                "reason": sl_result["action"],
+            })
+            self.stop_loss_manager.remove_position(self.symbol)
+
+            await self.alert_manager.send_trade_alert(
+                symbol=self.symbol,
+                side="sell",
+                price=current_price,
+                amount=sl_result["position"].amount,
+                pnl=sl_result["pnl"],
+            )
+
         signals = self.strategy.calculate_signals(
             data["indicators_df"],
             current_price,
@@ -605,6 +632,15 @@ class TradingBot:
                     f"{signal.amount:.6f} @ ${signal.price:,.2f}"
                 )
                 
+                # Track position in StopLossManager
+                if signal.type == SignalType.BUY:
+                    self.stop_loss_manager.add_position(
+                        symbol=self.symbol,
+                        entry_price=signal.price,
+                        amount=signal.amount,
+                        is_long=True,
+                    )
+
                 # Send trade alert
                 await self.alert_manager.send_trade_alert(
                     symbol=self.symbol,
