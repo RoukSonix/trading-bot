@@ -102,28 +102,40 @@ class TestNoLookAheadBias:
             assert "signal_price" in trade
 
     def test_slippage_applied(self, ohlcv_100):
-        """Verify slippage is applied to fill prices."""
-        slippage = 0.01  # 1% — large for easy verification
+        """Verify slippage is applied to fill prices.
 
-        config = GridConfig(grid_levels=5, grid_spacing_pct=2.0, amount_per_level=0.001)
-        strat = GridStrategy(symbol="BTC/USDT", config=config)
+        With slippage, BUY fills should be *higher* and SELL fills *lower*
+        than the same run with zero slippage (both use next-candle open).
+        """
+        slippage = 0.01  # 1%
 
-        engine = BacktestEngine(
+        config0 = GridConfig(grid_levels=5, grid_spacing_pct=2.0, amount_per_level=0.001)
+        strat0 = GridStrategy(symbol="BTC/USDT", config=config0)
+        engine0 = BacktestEngine(
             symbol="BTC/USDT", timeframe="1d",
-            initial_balance=10000.0, commission=0.001,
-            slippage=slippage,
+            initial_balance=10000.0, commission=0.001, slippage=0.0,
         )
-        result = engine.run(strategy=strat, data=ohlcv_100)
+        result0 = engine0.run(strategy=strat0, data=ohlcv_100)
 
-        for trade in result.trades:
-            # For BUY trades: fill_price > open (slippage moves price up)
-            # For SELL trades: fill_price < open (slippage moves price down)
-            # We can't check exact open here, but we know signal_price != fill_price
-            # when slippage > 0
-            if trade["type"] == "BUY":
-                assert trade["fill_price"] >= trade["signal_price"] * 0.99  # reasonable range
-            elif trade["type"] == "SELL":
-                assert trade["fill_price"] <= trade["signal_price"] * 1.01
+        config1 = GridConfig(grid_levels=5, grid_spacing_pct=2.0, amount_per_level=0.001)
+        strat1 = GridStrategy(symbol="BTC/USDT", config=config1)
+        engine1 = BacktestEngine(
+            symbol="BTC/USDT", timeframe="1d",
+            initial_balance=10000.0, commission=0.001, slippage=slippage,
+        )
+        result1 = engine1.run(strategy=strat1, data=ohlcv_100)
+
+        # With slippage, fills should differ from zero-slippage fills
+        # Both runs produce trades, so at least one trade to verify
+        if result0.trades and result1.trades:
+            # The first trade in each should have different fill prices
+            # because slippage adjusts the open price
+            t0 = result0.trades[0]
+            t1 = result1.trades[0]
+            if t0["type"] == "BUY":
+                assert t1["fill_price"] > t0["fill_price"]
+            else:
+                assert t1["fill_price"] < t0["fill_price"]
 
     def test_commission_deducted(self, ohlcv_100):
         """Commission should be deducted from each trade."""
