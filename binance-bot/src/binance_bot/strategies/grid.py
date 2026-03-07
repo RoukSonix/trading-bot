@@ -14,7 +14,7 @@ import pandas as pd
 from loguru import logger
 
 from binance_bot.strategies.base import BaseStrategy, Signal, SignalType, GridLevel
-from shared.core.database import SessionLocal, Trade
+from shared.core.database import SessionLocal, Trade, Position
 
 
 @dataclass
@@ -232,6 +232,34 @@ class GridStrategy(BaseStrategy):
                     timestamp=int(time.time() * 1000),
                 )
                 db.add(db_trade)
+                
+                # Update position
+                position = db.query(Position).filter(Position.symbol == self.symbol).first()
+                if position:
+                    if signal.type == SignalType.BUY:
+                        # Average entry price
+                        total_cost = position.entry_price * position.amount + cost
+                        position.amount += signal.amount
+                        position.entry_price = total_cost / position.amount if position.amount > 0 else 0
+                    else:  # SELL
+                        position.realized_pnl += (signal.price - position.entry_price) * signal.amount
+                        position.amount -= signal.amount
+                        if position.amount <= 0:
+                            position.amount = 0
+                            position.entry_price = 0
+                    position.side = "long" if position.amount > 0 else "flat"
+                else:
+                    # Create new position
+                    position = Position(
+                        symbol=self.symbol,
+                        side="long" if signal.type == SignalType.BUY else "flat",
+                        entry_price=signal.price if signal.type == SignalType.BUY else 0,
+                        amount=signal.amount if signal.type == SignalType.BUY else 0,
+                        unrealized_pnl=0,
+                        realized_pnl=0,
+                    )
+                    db.add(position)
+                
                 db.commit()
                 db.close()
             except Exception as e:
