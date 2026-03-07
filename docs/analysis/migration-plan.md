@@ -1,8 +1,28 @@
 # Migration Plan: Hybrid Architecture (Jesse + Our AI Layer)
 
 **Date:** 2026-03-07  
+**Updated:** 2026-03-07 — Changed approach: parallel bot, not replacement  
 **Decision:** Option C — Jesse as trading framework foundation, our AI/sentiment/factors as enhancement layer  
 **Goal:** Lаconic, cohesive system that leverages Jesse's battle-tested trading engine while preserving our unique AI-powered grid trading
+
+## Approach: Parallel Development
+
+**We do NOT replace the existing binance-bot.** Instead, we build a new Jesse-based bot (`jesse-bot/`) side by side in the monorepo. Both bots run simultaneously on the same market — we compare results and decide which one stays.
+
+```
+trading-bots/
+├── binance-bot/       # EXISTING — keeps running, no changes
+├── jesse-bot/         # NEW — Jesse-based bot with our AI layer
+├── polymarket-bot/    # FUTURE — scaffold
+└── shared/            # Shared modules (both bots can use enhancements/)
+```
+
+**Why:**
+- Zero risk to current bot
+- Side-by-side performance comparison (same market, same period)
+- If Jesse bot wins → gradually sunset binance-bot
+- If binance-bot wins → we still learned from Jesse, keep useful parts
+- Shared enhancements (AI, sentiment, factors) work for both
 
 ---
 
@@ -41,77 +61,86 @@ Jesse's Strategy class has lifecycle hooks (`before()`, `after()`, `update_posit
 
 ```
 trading-bots/
-├── jesse-config/                    # Jesse project root
+├── binance-bot/                     # EXISTING — unchanged, keeps running
+│   └── ...                          # (all current code stays as-is)
+│
+├── jesse-bot/                       # NEW — Jesse-based bot
 │   ├── strategies/                  # Jesse strategy plugins
 │   │   ├── AIGridStrategy/          # Our grid strategy as Jesse plugin
 │   │   │   ├── __init__.py          # Strategy class (extends jesse.Strategy)
-│   │   │   ├── ai_mixin.py          # AI enhancement mixin
-│   │   │   └── config.py            # Strategy-specific config
+│   │   │   └── ai_mixin.py          # AI enhancement mixin
 │   │   ├── AIGridShort/             # Short-only variant
 │   │   │   └── __init__.py
 │   │   └── AIMomentum/              # Future: momentum strategy
 │   │       └── __init__.py
 │   ├── config.py                    # Jesse config (exchanges, DB, logging)
 │   ├── routes.py                    # Trading routes (symbol + timeframe + strategy)
-│   └── live-config.py               # Live trading config
-│
-├── enhancements/                    # OUR unique modules (standalone)
-│   ├── ai/                          # LLM integration
-│   │   ├── agent.py                 # TradingAgent — market analysis, grid decisions
-│   │   ├── prompts.py               # Prompt templates
-│   │   └── config.py                # AI config (model, temperature, etc.)
-│   ├── sentiment/                   # News sentiment pipeline
-│   │   ├── news_fetcher.py          # CryptoCompare + CoinGecko
-│   │   ├── vector_store.py          # ChromaDB
-│   │   ├── embeddings.py            # Ollama nomic-embed-text
-│   │   └── analyzer.py              # Sentiment scoring
-│   ├── factors/                     # Factor analysis
-│   │   ├── calculator.py            # Momentum, volatility, RSI, volume
-│   │   └── regime.py                # Market regime detection
-│   ├── alerts/                      # Enhanced alerting (KEEP OURS)
-│   │   ├── manager.py               # AlertManager with rate limiting + dedup
-│   │   ├── discord.py               # Discord webhook
-│   │   ├── email.py                 # SMTP
-│   │   └── rules.py                 # Alert rules engine
-│   └── emergency/                   # Emergency stop mechanism
-│       └── stop.py
-│
-├── dashboard/                       # Streamlit frontend (adapted for Jesse data)
-│   ├── app.py
-│   └── components/
-│
-├── runner/                          # Orchestrator
-│   ├── bot.py                       # Main entry point (Jesse live/backtest + our enhancements)
-│   ├── scheduler.py                 # Periodic AI review, news fetch, alerts
-│   └── state.py                     # Shared state for dashboard
-│
-├── tests/                           # Reorganized tests
-│   ├── unit/
-│   │   ├── test_ai_agent.py
-│   │   ├── test_sentiment.py
-│   │   ├── test_factors.py
-│   │   └── test_alerts.py
-│   ├── integration/
-│   │   ├── test_strategy_backtest.py  # Jesse backtest with our strategy
-│   │   └── test_ai_integration.py
-│   └── conftest.py
-│
-├── docker/
+│   ├── live-config.py               # Live trading config
+│   ├── enhancements/                # OUR unique modules
+│   │   ├── ai/                      # LLM integration (ported from shared/ai)
+│   │   │   ├── agent.py
+│   │   │   ├── prompts.py
+│   │   │   └── config.py
+│   │   ├── sentiment/               # News pipeline (ported from shared/vector_db)
+│   │   │   ├── news_fetcher.py
+│   │   │   ├── vector_store.py
+│   │   │   ├── embeddings.py
+│   │   │   └── analyzer.py
+│   │   ├── factors/                 # Factor analysis (ported from shared/factors)
+│   │   │   ├── calculator.py
+│   │   │   └── regime.py
+│   │   ├── alerts/                  # Enhanced alerting (ported from shared/alerts)
+│   │   │   ├── manager.py
+│   │   │   ├── discord.py
+│   │   │   ├── email.py
+│   │   │   └── rules.py
+│   │   └── emergency/
+│   │       └── stop.py
+│   ├── dashboard/                   # Streamlit frontend (adapted for Jesse)
+│   │   ├── app.py
+│   │   └── components/
+│   ├── scripts/                     # Entry points
+│   │   ├── run_backtest.py
+│   │   ├── run_live.py
+│   │   └── run_compare.py           # Compare jesse-bot vs binance-bot results
+│   ├── tests/
+│   │   ├── test_strategy.py
+│   │   ├── test_ai_integration.py
+│   │   └── conftest.py
+│   ├── docker-compose.yml           # Jesse + PostgreSQL
 │   ├── Dockerfile
-│   ├── docker-compose.yml
-│   ├── docker-compose.dev.yml
-│   └── docker-compose.prod.yml
+│   ├── requirements.txt
+│   └── .env.example
+│
+├── polymarket-bot/                  # FUTURE — scaffold
+│   └── ...
+│
+├── shared/                          # EXISTING — shared modules (both bots can use)
+│   └── ...
 │
 ├── docs/
-│   ├── analysis/                    # This folder
-│   ├── strategies.md
-│   └── deployment.md
+│   └── analysis/                    # This folder
 │
-├── data/                            # Jesse storage + our data
-├── AGENTS.md                        # Updated for new structure
-├── CHANGELOG.md
-├── requirements.txt                 # Jesse + our deps
-└── .env.example
+├── AGENTS.md
+└── README.md
+```
+
+### Comparison Mode
+
+Both bots trade the same pair (BTC/USDT) on the same timeframe. `scripts/run_compare.py` fetches metrics from both and outputs a side-by-side report:
+
+```
+==========================================
+   BOT COMPARISON: 2026-03-07 → 2026-03-14
+==========================================
+                 binance-bot    jesse-bot
+Return:          +1.23%         +1.87%
+Sharpe:          0.42           0.61
+Max DD:          -3.1%          -2.4%
+Win Rate:        58%            63%
+Trades:          47             39
+AI Reviews:      12             12
+==========================================
 ```
 
 ---
@@ -287,14 +316,7 @@ trading-bots/
 
 **Deliverable:** Jesse running with basic grid strategy, backtest producing metrics
 
-**What dies:**
-- `shared/backtest/engine.py` (replaced by Jesse backtest)
-- `shared/backtest/benchmark.py` (replaced by Jesse benchmark)
-- `shared/backtest/charts.py` (Jesse has its own charts)
-- `shared/core/indicators.py` (replaced by Jesse's 170+ indicators)
-- `shared/optimization/optimizer.py` (replaced by Jesse's Optuna)
-- `shared/optimization/walk_forward.py` (keep concept, adapt to Jesse)
-- `shared/optimization/metrics.py` (replaced by Jesse metrics)
+**Note:** binance-bot stays untouched. All new code goes into `jesse-bot/`.
 
 ---
 
