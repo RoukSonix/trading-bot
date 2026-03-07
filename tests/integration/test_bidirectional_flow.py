@@ -114,8 +114,8 @@ class TestFullBidirectionalTradeFlow:
         position = session.query(Position).filter_by(symbol="BTC/USDT").first()
         assert position is not None
         assert position.side == "long"
-        assert position.amount == pytest.approx(0.01)
-        assert position.entry_price == pytest.approx(49500.0)
+        assert float(position.amount) == pytest.approx(0.01)
+        assert float(position.entry_price) == pytest.approx(49500.0)
         session.close()
 
     def test_short_trade_creates_position(self, trade_db, short_strategy):
@@ -133,8 +133,8 @@ class TestFullBidirectionalTradeFlow:
         position = session.query(Position).filter_by(symbol="BTC/USDT").first()
         assert position is not None
         assert position.side == "short"
-        assert position.short_amount == pytest.approx(0.01)
-        assert position.short_entry == pytest.approx(50500.0)
+        assert float(position.short_amount) == pytest.approx(0.01)
+        assert float(position.short_entry) == pytest.approx(50500.0)
         session.close()
 
     def test_signal_detection_to_short_execution(self, trade_db):
