@@ -77,20 +77,31 @@ class StrategyEngine:
             logger.warning("No strategies registered in engine")
             return None
 
-        # Log regime change / strategy switch
+        # Log regime change / strategy switch (with cooldown)
         if target_name != self.active_strategy_name:
-            old = self.active_strategy_name or "none"
-            logger.info(
-                f"Strategy switch: {old} -> {target_name} "
-                f"(regime={regime.value}, RSI={rsi:.1f})"
-            )
-            self._strategy_history.append({
-                "from": old,
-                "to": target_name,
-                "regime": regime.value,
-                "rsi": rsi,
-            })
-            self.active_strategy_name = target_name
+            import time
+            now = time.time()
+            cooldown = getattr(self, '_switch_cooldown', 1800)  # 30 min default
+            last_switch = getattr(self, '_last_switch_time', 0)
+            
+            if now - last_switch >= cooldown:
+                old = self.active_strategy_name or "none"
+                logger.info(
+                    f"Strategy switch: {old} -> {target_name} "
+                    f"(regime={regime.value}, RSI={rsi:.1f})"
+                )
+                self._strategy_history.append({
+                    "from": old,
+                    "to": target_name,
+                    "regime": regime.value,
+                    "rsi": rsi,
+                })
+                self.active_strategy_name = target_name
+                self._last_switch_time = now
+            else:
+                # Keep current strategy during cooldown
+                target_name = self.active_strategy_name
+                strategy = self.strategies.get(target_name)
 
         return strategy
 
