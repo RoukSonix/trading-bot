@@ -3,6 +3,9 @@
 > Context document for AI agents working on this codebase.
 > Read this file first before making any changes.
 
+### Maintenance Rule
+**After fixing any bug, issue, or task listed in this file — remove its entry from AGENTS.md and add a note to CHANGELOG.md.** Keep this file clean and current. If CHANGELOG.md doesn't exist, create it.
+
 ---
 
 ## Project Overview
