@@ -35,10 +35,25 @@ class GridLevel:
     amount: float
     filled: bool = False
     order_id: Optional[str] = None
-    
+    # TP/SL fields (Sprint 21)
+    take_profit: float = 0.0
+    stop_loss: float = 0.0
+    trailing_stop: float = 0.0       # Trailing stop distance (%)
+    trailing_high: float = 0.0       # Highest price since fill (for long trailing)
+    trailing_low: float = float('inf')  # Lowest price since fill (for short trailing)
+    break_even_triggered: bool = False
+    fill_price: float = 0.0          # Actual fill price
+    fill_time: int = 0               # Fill timestamp
+    pnl: float = 0.0                 # Realized P&L for this level
+
     def __repr__(self):
         status = "✓" if self.filled else "○"
-        return f"<GridLevel {status} {self.side.value} @ ${self.price:,.2f}>"
+        tp_sl = ""
+        if self.take_profit > 0:
+            tp_sl = f" TP=${self.take_profit:,.2f}"
+        if self.stop_loss > 0:
+            tp_sl += f" SL=${self.stop_loss:,.2f}"
+        return f"<GridLevel {status} {self.side.value} @ ${self.price:,.2f}{tp_sl}>"
 
 
 class BaseStrategy(ABC):

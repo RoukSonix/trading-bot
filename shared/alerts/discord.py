@@ -344,6 +344,63 @@ class DiscordAlert:
         
         return await self._send_webhook({"embeds": [embed]})
     
+    async def send_tp_sl_alert(
+        self,
+        event_type: str,
+        symbol: str,
+        level_price: float,
+        exit_price: float,
+        pnl: float,
+        direction: str = "long",
+        break_even_price: Optional[float] = None,
+    ) -> bool:
+        """Send TP/SL event alert.
+
+        Args:
+            event_type: "take_profit", "stop_loss", "trailing_stop", or "break_even".
+            symbol: Trading pair.
+            level_price: Original grid level fill price.
+            exit_price: Price at which TP/SL triggered.
+            pnl: Realized PnL for this level.
+            direction: "long" or "short".
+            break_even_price: New SL price if break-even event.
+
+        Returns:
+            True if sent successfully.
+        """
+        config = {
+            "take_profit": ("TP Hit!", self.COLOR_PROFIT),
+            "stop_loss": ("SL Hit!", self.COLOR_LOSS),
+            "trailing_stop": ("Trailing Stop Triggered!", self.COLOR_WARNING),
+            "break_even": ("Break-Even Stop Moved!", self.COLOR_INFO),
+        }
+
+        title_text, color = config.get(event_type, (event_type, self.COLOR_INFO))
+        pnl_emoji = "+" if pnl >= 0 else ""
+
+        fields = [
+            {"name": "Symbol", "value": symbol, "inline": True},
+            {"name": "Direction", "value": direction.upper(), "inline": True},
+            {"name": "Fill Price", "value": f"${level_price:,.2f}", "inline": True},
+        ]
+
+        if event_type == "break_even" and break_even_price is not None:
+            fields.append({"name": "New SL", "value": f"${break_even_price:,.2f}", "inline": True})
+        else:
+            fields.append({"name": "Exit Price", "value": f"${exit_price:,.2f}", "inline": True})
+            fields.append({"name": "PnL", "value": f"${pnl_emoji}{pnl:,.2f}", "inline": True})
+
+        embed = {
+            "title": f"{'🎯' if event_type == 'take_profit' else '🛑' if 'stop' in event_type else '🔒'} {title_text}",
+            "description": f"Level ${level_price:,.2f} closed at ${exit_price:,.2f} ({pnl_emoji}${pnl:,.2f})",
+            "color": color,
+            "fields": fields,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "footer": {"text": "Trading Bot | TP/SL"},
+        }
+
+        return await self._send_webhook({"embeds": [embed]})
+
     async def send_custom(
         self,
         title: str,

@@ -17,6 +17,9 @@ from loguru import logger
 
 from binance_bot.strategies.base import BaseStrategy, Signal, SignalType, GridLevel
 from shared.core.database import SessionLocal, Trade, Position
+from shared.risk.tp_sl import TPSLCalculator
+from shared.risk.trailing_stop import TrailingStopManager
+from shared.risk.break_even import BreakEvenManager
 
 
 @dataclass
@@ -42,6 +45,20 @@ class GridConfig:
     direction: str = "both"         # "long", "short", "both"
     leverage: float = 1.0           # 1x = spot, 2x-3x = margin
     trend_bias: bool = True         # Auto-detect trend for direction bias
+
+    # Per-level TP/SL (Sprint 21)
+    tp_mode: str = "atr"            # "fixed", "atr", "rr_ratio"
+    sl_mode: str = "atr"            # "fixed", "atr"
+    tp_pct: float = 2.0             # For fixed mode
+    sl_pct: float = 1.0             # For fixed mode
+    tp_atr_mult: float = 2.0        # For ATR mode
+    sl_atr_mult: float = 1.0        # For ATR mode
+    trailing_enabled: bool = True
+    trailing_pct: float = 1.0
+    trailing_activation_pct: float = 0.5
+    break_even_enabled: bool = True
+    break_even_pct: float = 1.0
+    break_even_offset_pct: float = 0.1
 
 
 class GridStrategy(BaseStrategy):
@@ -79,6 +96,19 @@ class GridStrategy(BaseStrategy):
         self.short_holdings: float = 0.0
         self.long_entry_price: float = 0.0
         self.short_entry_price: float = 0.0
+
+        # TP/SL managers (Sprint 21)
+        self.current_atr: float = 0.0
+        self.tp_sl_calc = TPSLCalculator()
+        self.trailing_mgr = TrailingStopManager(
+            trail_pct=self.config.trailing_pct,
+            activation_pct=self.config.trailing_activation_pct,
+        )
+        self.break_even_mgr = BreakEvenManager(
+            activation_pct=self.config.break_even_pct,
+            offset_pct=self.config.break_even_offset_pct,
+        )
+        self.tp_sl_alerts: list[dict] = []  # Pending TP/SL alert events
 
     def setup_grid(self, current_price: float, direction: Optional[str] = None) -> list[GridLevel]:
         """Set up grid levels around current price.
@@ -332,8 +362,11 @@ class GridStrategy(BaseStrategy):
     def calculate_signals(self, df: pd.DataFrame, current_price: float) -> list[Signal]:
         """Check grid levels and generate signals.
 
+        Also updates ATR for TP/SL calculation and checks existing
+        filled levels for TP/SL hits.
+
         Args:
-            df: OHLCV DataFrame (used for context, not primary signal source)
+            df: OHLCV DataFrame (used for context and ATR calculation)
             current_price: Current market price
 
         Returns:
@@ -342,6 +375,14 @@ class GridStrategy(BaseStrategy):
         if not self.levels:
             self.setup_grid(current_price)
             return []
+
+        # Update ATR from latest data
+        self.update_atr(df)
+
+        # Check TP/SL on existing filled levels
+        tp_sl_events = self.check_tp_sl(current_price)
+        if tp_sl_events:
+            self.tp_sl_alerts.extend(tp_sl_events)
 
         signals = []
 
@@ -375,6 +416,13 @@ class GridStrategy(BaseStrategy):
                 )
                 signals.append(signal)
                 level.filled = True
+                level.fill_price = level.price
+                level.fill_time = int(time.time() * 1000)
+                level.trailing_high = level.price
+                level.trailing_low = level.price
+
+                # Set TP/SL for this newly filled level
+                self._set_tp_sl_for_level(level)
 
                 # Create opposite level
                 self._create_opposite_level(level, current_price)
@@ -409,7 +457,199 @@ class GridStrategy(BaseStrategy):
 
         self.levels.append(new_level)
         self.levels.sort(key=lambda x: x.price)
-    
+
+    def update_atr(self, df: pd.DataFrame, period: int = 14):
+        """Calculate and store current ATR from OHLCV data.
+
+        Args:
+            df: OHLCV DataFrame with high, low, close columns.
+            period: ATR period.
+        """
+        if len(df) < period:
+            return
+        high = df["high"]
+        low = df["low"]
+        close = df["close"]
+        tr1 = high - low
+        tr2 = (high - close.shift()).abs()
+        tr3 = (low - close.shift()).abs()
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        atr = tr.ewm(alpha=1 / period, min_periods=period).mean()
+        self.current_atr = float(atr.iloc[-1]) if not np.isnan(atr.iloc[-1]) else 0.0
+
+    def _set_tp_sl_for_level(self, level: GridLevel):
+        """Set TP/SL prices for a newly filled level based on config mode."""
+        if level.fill_price == 0:
+            return
+
+        side = "long" if level.amount > 0 else "short"
+
+        # Calculate TP
+        if self.config.tp_mode == "atr" and self.current_atr > 0:
+            tp, _ = self.tp_sl_calc.atr_based(
+                level.fill_price, side, self.current_atr,
+                tp_multiplier=self.config.tp_atr_mult,
+            )
+        elif self.config.tp_mode == "rr_ratio":
+            # Need SL first for rr_ratio
+            tp = 0.0  # Will be set after SL
+        else:  # fixed
+            tp, _ = self.tp_sl_calc.fixed_percentage(
+                level.fill_price, side,
+                tp_pct=self.config.tp_pct,
+            )
+
+        # Calculate SL
+        if self.config.sl_mode == "atr" and self.current_atr > 0:
+            _, sl = self.tp_sl_calc.atr_based(
+                level.fill_price, side, self.current_atr,
+                sl_multiplier=self.config.sl_atr_mult,
+            )
+        else:  # fixed
+            _, sl = self.tp_sl_calc.fixed_percentage(
+                level.fill_price, side,
+                sl_pct=self.config.sl_pct,
+            )
+
+        # For rr_ratio mode, calculate TP from SL
+        if self.config.tp_mode == "rr_ratio" and sl > 0:
+            tp = self.tp_sl_calc.risk_reward_ratio(
+                level.fill_price, side, sl, rr_ratio=self.config.tp_atr_mult,
+            )
+
+        level.take_profit = tp
+        level.stop_loss = sl
+
+        logger.debug(
+            f"TP/SL set: fill=${level.fill_price:,.2f} TP=${tp:,.2f} SL=${sl:,.2f} ({side})"
+        )
+
+    def check_tp_sl(self, current_price: float) -> list[dict]:
+        """Check all filled levels for TP/SL hits, trailing stops, and break-even.
+
+        This should be called on every price update (tick).
+
+        Args:
+            current_price: Current market price.
+
+        Returns:
+            List of event dicts for levels that were closed by TP/SL.
+        """
+        events = []
+
+        for level in self.levels:
+            if not level.filled or level.fill_price == 0:
+                continue
+            # Skip levels that have already been closed (pnl != 0 and TP/SL = 0)
+            if level.take_profit == 0 and level.stop_loss == 0:
+                continue
+
+            is_long = level.amount > 0
+
+            # 1. Check break-even activation
+            if self.config.break_even_enabled and not level.break_even_triggered:
+                self.break_even_mgr.check_and_activate(level, current_price)
+
+            # 2. Check trailing stop
+            if self.config.trailing_enabled:
+                if self.trailing_mgr.update(level, current_price):
+                    pnl = self._calc_level_pnl(level, current_price)
+                    level.pnl = pnl
+                    events.append({
+                        "type": "trailing_stop",
+                        "level": level,
+                        "price": current_price,
+                        "pnl": pnl,
+                    })
+                    self._close_level(level, current_price)
+                    continue
+
+            # 3. Check take-profit
+            tp_hit = False
+            if level.take_profit > 0:
+                if is_long and current_price >= level.take_profit:
+                    tp_hit = True
+                elif not is_long and current_price <= level.take_profit:
+                    tp_hit = True
+
+            if tp_hit:
+                pnl = self._calc_level_pnl(level, current_price)
+                level.pnl = pnl
+                events.append({
+                    "type": "take_profit",
+                    "level": level,
+                    "price": current_price,
+                    "pnl": pnl,
+                })
+                self._close_level(level, current_price)
+                continue
+
+            # 4. Check stop-loss
+            sl_hit = False
+            if level.stop_loss > 0:
+                if is_long and current_price <= level.stop_loss:
+                    sl_hit = True
+                elif not is_long and current_price >= level.stop_loss:
+                    sl_hit = True
+
+            if sl_hit:
+                pnl = self._calc_level_pnl(level, current_price)
+                level.pnl = pnl
+                events.append({
+                    "type": "stop_loss",
+                    "level": level,
+                    "price": current_price,
+                    "pnl": pnl,
+                })
+                self._close_level(level, current_price)
+
+        return events
+
+    def _calc_level_pnl(self, level: GridLevel, exit_price: float) -> float:
+        """Calculate P&L for a level at given exit price."""
+        abs_amount = abs(level.amount)
+        if level.amount > 0:  # Long
+            return (exit_price - level.fill_price) * abs_amount
+        else:  # Short
+            return (level.fill_price - exit_price) * abs_amount
+
+    def _close_level(self, level: GridLevel, exit_price: float):
+        """Close a level hit by TP/SL — update paper positions.
+
+        Simulates the closing trade (sell for long, buy for short).
+        """
+        abs_amount = abs(level.amount)
+        cost = exit_price * abs_amount
+
+        if level.amount > 0:
+            # Close long: sell
+            if self.paper_holdings >= abs_amount:
+                self.paper_balance += cost
+                self.paper_holdings -= abs_amount
+                self.long_holdings -= abs_amount
+                if self.long_holdings < 0.00000001:
+                    self.long_holdings = 0
+                    self.long_entry_price = 0
+        else:
+            # Close short: buy to cover
+            if self.short_holdings >= abs_amount and self.paper_balance >= cost:
+                self.paper_balance -= cost
+                self.short_holdings -= abs_amount
+                if self.short_holdings < 0.00000001:
+                    self.short_holdings = 0
+                    self.short_entry_price = 0
+
+        self.realized_pnl += level.pnl
+
+        # Clear TP/SL so this level isn't checked again
+        level.take_profit = 0.0
+        level.stop_loss = 0.0
+
+        logger.info(
+            f"Level closed: fill=${level.fill_price:,.2f} exit=${exit_price:,.2f} "
+            f"PnL=${level.pnl:+,.2f}"
+        )
+
     def execute_paper_trade(self, signal: Signal) -> dict:
         """Execute a paper trade (simulation).
 
@@ -645,6 +885,12 @@ class GridStrategy(BaseStrategy):
 
         net_exposure = self.get_net_exposure()
 
+        # TP/SL stats (Sprint 21)
+        levels_with_tp = [l for l in filled if l.take_profit > 0]
+        levels_with_sl = [l for l in filled if l.stop_loss > 0]
+        levels_with_be = [l for l in filled if l.break_even_triggered]
+        closed_by_tp_sl = [l for l in filled if l.pnl != 0]
+
         return {
             "strategy": self.name,
             "symbol": self.symbol,
@@ -662,6 +908,10 @@ class GridStrategy(BaseStrategy):
                 "amount_per_level": self.config.amount_per_level,
                 "direction": self.config.direction,
                 "leverage": self.config.leverage,
+                "tp_mode": self.config.tp_mode,
+                "sl_mode": self.config.sl_mode,
+                "trailing_enabled": self.config.trailing_enabled,
+                "break_even_enabled": self.config.break_even_enabled,
             },
             "paper_trading": {
                 "balance_usdt": self.paper_balance,
@@ -673,6 +923,15 @@ class GridStrategy(BaseStrategy):
                 "net_exposure": net_exposure,
                 "total_value": current_value,
                 "trades_count": len(self.paper_trades),
+                "realized_pnl": self.realized_pnl,
+            },
+            "tp_sl": {
+                "current_atr": self.current_atr,
+                "levels_with_tp": len(levels_with_tp),
+                "levels_with_sl": len(levels_with_sl),
+                "break_even_active": len(levels_with_be),
+                "closed_by_tp_sl": len(closed_by_tp_sl),
+                "total_tp_sl_pnl": sum(l.pnl for l in closed_by_tp_sl),
             },
         }
 
@@ -684,8 +943,9 @@ class GridStrategy(BaseStrategy):
 
         logger.info(f"\n{'='*60}")
         logger.info(f"Grid Status for {self.symbol} (direction={self.config.direction})")
-        logger.info(f"Center: ${self.center_price:,.2f}")
+        logger.info(f"Center: ${self.center_price:,.2f} | ATR: ${self.current_atr:,.2f}")
         logger.info(f"Long: {self.long_holdings:.6f} | Short: {self.short_holdings:.6f} | Net: {self.get_net_exposure():.6f}")
+        logger.info(f"Realized PnL: ${self.realized_pnl:+,.2f}")
         logger.info(f"{'='*60}")
 
         for level in reversed(self.levels):  # Top to bottom
@@ -697,6 +957,14 @@ class GridStrategy(BaseStrategy):
             else:
                 side = "SELL  " if level.side == SignalType.SELL else "BUY   "
                 marker = ">>>" if level.side == SignalType.SELL else "   "
-            logger.info(f"{marker} ${level.price:>10,.2f} | {side} | {status}")
+
+            tp_sl_info = ""
+            if level.filled and level.take_profit > 0:
+                be = " BE" if level.break_even_triggered else ""
+                tp_sl_info = f" | TP=${level.take_profit:,.0f} SL=${level.stop_loss:,.0f}{be}"
+            if level.pnl != 0:
+                tp_sl_info = f" | PnL=${level.pnl:+,.2f}"
+
+            logger.info(f"{marker} ${level.price:>10,.2f} | {side} | {status}{tp_sl_info}")
 
         logger.info(f"{'='*60}")
