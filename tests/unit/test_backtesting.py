@@ -139,7 +139,7 @@ class TestNoLookAheadBias:
 
     def test_commission_deducted(self, ohlcv_100):
         """Commission should be deducted from each trade."""
-        config = GridConfig(grid_levels=5, grid_spacing_pct=2.0, amount_per_level=0.001)
+        config = GridConfig(grid_levels=5, grid_spacing_pct=2.0, amount_per_level=0.001, direction="long")
         strat = GridStrategy(symbol="BTC/USDT", config=config)
 
         engine = BacktestEngine(

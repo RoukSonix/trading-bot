@@ -68,9 +68,9 @@ class Trade(Base):
 
 class Position(Base):
     """Current position tracking."""
-    
+
     __tablename__ = "positions"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, unique=True)
     side = Column(String(5), nullable=False)  # long/short/flat
@@ -79,7 +79,14 @@ class Position(Base):
     unrealized_pnl = Column(Float, default=0)
     realized_pnl = Column(Float, default=0)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-    
+
+    # Bi-directional fields (Sprint 20)
+    direction = Column(String(5), default="long")  # "long", "short", "both"
+    long_amount = Column(Float, default=0)
+    short_amount = Column(Float, default=0)
+    long_entry = Column(Float, default=0)
+    short_entry = Column(Float, default=0)
+
     def __repr__(self):
         return f"<Position {self.side} {self.amount} {self.symbol}>"
 

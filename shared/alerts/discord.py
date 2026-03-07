@@ -109,9 +109,11 @@ class DiscordAlert:
         pnl: Optional[float] = None,
         pnl_pct: Optional[float] = None,
         order_id: Optional[str] = None,
+        direction: Optional[str] = None,
+        net_exposure: Optional[float] = None,
     ) -> bool:
         """Send trade notification with rich embed.
-        
+
         Args:
             symbol: Trading pair (e.g., BTC/USDT)
             side: BUY or SELL
@@ -120,44 +122,69 @@ class DiscordAlert:
             pnl: Realized PnL (if closing)
             pnl_pct: PnL percentage
             order_id: Order ID
-            
+            direction: Trade direction - "long" or "short" (Sprint 20)
+            net_exposure: Net exposure after trade (Sprint 20)
+
         Returns:
             True if sent successfully
         """
         is_buy = side.upper() == "BUY"
-        
+        is_short = direction == "short"
+
         # Determine color based on PnL or side
         if pnl is not None:
             color = self.COLOR_PROFIT if pnl >= 0 else self.COLOR_LOSS
         else:
             color = self.COLOR_INFO
-        
-        # Build fields
+
+        # Build directional title
+        if is_short:
+            if is_buy:
+                title = "🔵 SHORT BUY (Cover) Executed"
+            else:
+                title = "🔴 SHORT SELL (Open) Executed"
+        else:
+            title = f"{'🟢 LONG BUY' if is_buy else '🔴 SELL'} Trade Executed"
+
+        # Build side label
+        side_label = side.upper()
+        if is_short:
+            side_label = f"SHORT {side_label}"
+        elif direction == "long":
+            side_label = f"LONG {side_label}"
+
         fields = [
             {"name": "Symbol", "value": symbol, "inline": True},
-            {"name": "Side", "value": f"{'🟢' if is_buy else '🔴'} {side.upper()}", "inline": True},
+            {"name": "Side", "value": f"{'🟢' if is_buy else '🔴'} {side_label}", "inline": True},
             {"name": "Price", "value": f"${price:,.2f}", "inline": True},
             {"name": "Amount", "value": f"{amount:.6f}", "inline": True},
         ]
-        
+
+        if direction:
+            dir_emoji = "📈" if direction == "long" else "📉"
+            fields.append({"name": "Direction", "value": f"{dir_emoji} {direction.upper()}", "inline": True})
+
         if pnl is not None:
             pnl_emoji = "📈" if pnl >= 0 else "📉"
             pnl_text = f"{pnl_emoji} ${pnl:+,.2f}"
             if pnl_pct is not None:
                 pnl_text += f" ({pnl_pct:+.2f}%)"
             fields.append({"name": "PnL", "value": pnl_text, "inline": True})
-        
+
+        if net_exposure is not None:
+            fields.append({"name": "Net Exposure", "value": f"📊 {net_exposure:.6f}", "inline": True})
+
         if order_id:
             fields.append({"name": "Order ID", "value": f"`{order_id}`", "inline": True})
-        
+
         embed = {
-            "title": f"{'🟢 BUY' if is_buy else '🔴 SELL'} Trade Executed",
+            "title": title,
             "color": color,
             "fields": fields,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "footer": {"text": "Trading Bot"},
         }
-        
+
         return await self._send_webhook({"embeds": [embed]})
     
     async def send_status_alert(

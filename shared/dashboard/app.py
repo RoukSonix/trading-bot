@@ -400,7 +400,7 @@ def _render_overview(status: dict | None):
     # Current position
     st.subheader("💼 Current Position")
     positions = fetch_api("/api/positions")
-    
+
     if positions and positions.get("positions"):
         for pos in positions["positions"]:
             col1, col2, col3, col4 = st.columns(4)
@@ -415,19 +415,46 @@ def _render_overview(status: dict | None):
             with col4:
                 pnl = pos.get("unrealized_pnl", 0)
                 st.metric("Unrealized PnL", f"${pnl:,.2f}", delta=f"{pnl:+,.2f}")
+
+            # Long vs Short exposure (Sprint 20)
+            long_amt = pos.get("long_amount", 0) or 0
+            short_amt = pos.get("short_amount", 0) or 0
+            if long_amt > 0 or short_amt > 0:
+                st.divider()
+                st.subheader("📊 Exposure Breakdown")
+                ec1, ec2, ec3, ec4 = st.columns(4)
+                with ec1:
+                    st.metric("🟢 Long Size", f"{long_amt:.6f}")
+                with ec2:
+                    long_entry = pos.get("long_entry", 0) or 0
+                    st.metric("Long Entry", f"${long_entry:,.2f}")
+                with ec3:
+                    st.metric("🔴 Short Size", f"{short_amt:.6f}")
+                with ec4:
+                    short_entry = pos.get("short_entry", 0) or 0
+                    st.metric("Short Entry", f"${short_entry:,.2f}")
+
+                ne1, ne2 = st.columns(2)
+                with ne1:
+                    net = long_amt - short_amt
+                    net_emoji = "📈" if net > 0 else "📉" if net < 0 else "➡️"
+                    st.metric("Net Exposure", f"{net_emoji} {net:.6f}")
+                with ne2:
+                    direction = pos.get("direction", "long")
+                    st.metric("Direction", direction.upper())
     else:
         st.info("No open positions")
-    
+
     st.divider()
-    
+
     # Quick stats
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.subheader("📈 Quick Stats")
         st.metric("Ticks", status.get("ticks", 0))
         st.metric("Errors", status.get("errors", 0))
-    
+
     with col2:
         st.subheader("⚙️ Configuration")
         config = fetch_api("/api/bot/config")
@@ -435,6 +462,8 @@ def _render_overview(status: dict | None):
             st.text(f"Grid Levels: {config.get('grid_levels', 'N/A')}")
             st.text(f"Grid Spacing: {config.get('grid_spacing_pct', 'N/A')}%")
             st.text(f"Amount/Level: {config.get('amount_per_level', 'N/A')}")
+            st.text(f"Direction: {config.get('direction', 'both')}")
+            st.text(f"Leverage: {config.get('leverage', '1.0')}x")
             st.text(f"AI Enabled: {'Yes' if config.get('ai_enabled') else 'No'}")
 
 

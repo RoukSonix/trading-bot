@@ -128,7 +128,7 @@ class TestFullTradeFlow:
     def test_signal_detection_to_execution(self, trade_db):
         """Full flow: grid setup → signal detection → paper execution → DB check."""
         Session = trade_db
-        config = GridConfig(grid_levels=3, grid_spacing_pct=1.0, amount_per_level=0.01)
+        config = GridConfig(grid_levels=3, grid_spacing_pct=1.0, amount_per_level=0.01, direction="long")
         strategy = GridStrategy(symbol="BTC/USDT", config=config)
         strategy.setup_grid(50000.0)
         df = make_ohlcv_df(30, base_price=50000.0)

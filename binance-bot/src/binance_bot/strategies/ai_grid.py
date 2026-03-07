@@ -26,7 +26,7 @@ from shared.factors import factor_calculator, factor_strategy
 @dataclass
 class AIGridConfig(GridConfig):
     """AI Grid configuration with additional AI settings."""
-    
+
     # AI settings
     ai_enabled: bool = True
     # Note: require_ai_approval removed - bot now uses state machine (WAITING/TRADING/PAUSED)
@@ -36,6 +36,7 @@ class AIGridConfig(GridConfig):
     review_interval_minutes: int = 15    # How often to run AI review
     min_confidence: int = 60             # Minimum AI confidence to trade (0-100)
     risk_tolerance: str = "medium"       # low/medium/high
+    ai_short_enabled: bool = True        # AI can recommend short positions
 
 
 class AIGridStrategy(GridStrategy):
@@ -301,6 +302,11 @@ class AIGridStrategy(GridStrategy):
             if self.last_optimization else 'N/A'
         )
         
+        # Sprint 20: include long/short exposure
+        long_hold = paper.get('long_holdings', paper.get('holdings_btc', 0))
+        short_hold = paper.get('short_holdings', 0)
+        net_exposure = paper.get('net_exposure', long_hold - short_hold)
+
         context = f"""
 Current Market:
 - Price: ${current_price:,.2f}
@@ -311,10 +317,14 @@ Grid Status:
 - Active buy levels: {status['active_buy_levels']}
 - Active sell levels: {status['active_sell_levels']}
 - Filled levels: {status['filled_levels']}
+- Long levels: {status.get('long_levels', 'N/A')}
+- Short levels: {status.get('short_levels', 'N/A')}
 - Total trades: {paper['trades_count']}
 
 Position:
-- Holdings: {paper['holdings_btc']:.6f} BTC
+- Long Holdings: {long_hold:.6f} BTC
+- Short Holdings: {short_hold:.6f} BTC
+- Net Exposure: {net_exposure:.6f} BTC
 - USDT Balance: ${paper['balance_usdt']:,.2f}
 - Total Value: ${paper['total_value']:,.2f}
 - Unrealized PnL: ${unrealized_pnl:,.2f}
@@ -332,10 +342,11 @@ Last AI Analysis:
 Provide a brief assessment:
 1. Should we CONTINUE, PAUSE, or STOP the grid?
 2. Should we ADJUST the grid range? If yes, suggest new bounds.
-3. Any risk concerns?
+3. Should we GO_SHORT (increase short exposure) or REDUCE_LONG?
+4. Any risk concerns?
 
 Format your response as:
-ACTION: CONTINUE/PAUSE/STOP/ADJUST
+ACTION: CONTINUE/PAUSE/STOP/ADJUST/GO_SHORT/REDUCE_LONG
 NEW_LOWER: <price or N/A>
 NEW_UPPER: <price or N/A>
 RISK: LOW/MEDIUM/HIGH
@@ -360,7 +371,7 @@ REASON: <one line explanation>
                 line = line.strip()
                 if line.startswith('ACTION:'):
                     action = line.split(':')[1].strip().upper()
-                    if action in ['CONTINUE', 'PAUSE', 'STOP', 'ADJUST']:
+                    if action in ['CONTINUE', 'PAUSE', 'STOP', 'ADJUST', 'GO_SHORT', 'REDUCE_LONG']:
                         result["action"] = action
                 elif line.startswith('NEW_LOWER:'):
                     val = line.split(':')[1].strip().replace('$', '').replace(',', '')
@@ -415,12 +426,13 @@ REASON: <one line explanation>
     def get_status(self) -> dict:
         """Get current strategy status including AI state."""
         status = super().get_status()
-        
+
         status["ai"] = {
             "enabled": self.ai_enabled,
             "confirm_signals": self.ai_config.ai_confirm_signals,
             "auto_optimize": self.ai_config.ai_auto_optimize,
             "min_confidence": self.ai_config.min_confidence,
+            "short_enabled": self.ai_config.ai_short_enabled,
             "last_analysis": {
                 "trend": self.last_analysis.trend.value if self.last_analysis else None,
                 "risk_level": self.last_analysis.risk_level.value if self.last_analysis else None,
@@ -440,5 +452,5 @@ REASON: <one line explanation>
                 "action": self.last_factor_score.action.value,
             } if self.last_factor_score else None,
         }
-        
+
         return status

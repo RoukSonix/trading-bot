@@ -11,39 +11,43 @@ class TestGridLevelGeneration:
     """Tests for grid level setup."""
 
     def test_default_grid_setup(self):
-        strategy = GridStrategy(symbol="BTC/USDT")
+        config = GridConfig(direction="long")
+        strategy = GridStrategy(symbol="BTC/USDT", config=config)
         levels = strategy.setup_grid(50000.0)
-        # Default: 10 buy levels + 10 sell levels = 20 total
+        # Long-only: 10 buy levels + 10 sell levels = 20 total
         assert len(levels) == 20
 
     def test_grid_levels_count(self):
-        config = GridConfig(grid_levels=5)
+        config = GridConfig(grid_levels=5, direction="long")
         strategy = GridStrategy(symbol="BTC/USDT", config=config)
         levels = strategy.setup_grid(50000.0)
         assert len(levels) == 10  # 5 buy + 5 sell
 
     def test_buy_levels_below_price(self):
-        strategy = GridStrategy(symbol="BTC/USDT")
+        config = GridConfig(direction="long")
+        strategy = GridStrategy(symbol="BTC/USDT", config=config)
         levels = strategy.setup_grid(50000.0)
         buy_levels = [l for l in levels if l.side == SignalType.BUY]
         for level in buy_levels:
             assert level.price < 50000.0
 
     def test_sell_levels_above_price(self):
-        strategy = GridStrategy(symbol="BTC/USDT")
+        config = GridConfig(direction="long")
+        strategy = GridStrategy(symbol="BTC/USDT", config=config)
         levels = strategy.setup_grid(50000.0)
         sell_levels = [l for l in levels if l.side == SignalType.SELL]
         for level in sell_levels:
             assert level.price > 50000.0
 
     def test_levels_sorted_by_price(self):
-        strategy = GridStrategy(symbol="BTC/USDT")
+        config = GridConfig(direction="long")
+        strategy = GridStrategy(symbol="BTC/USDT", config=config)
         levels = strategy.setup_grid(50000.0)
         prices = [l.price for l in levels]
         assert prices == sorted(prices)
 
     def test_grid_spacing(self):
-        config = GridConfig(grid_levels=3, grid_spacing_pct=2.0)
+        config = GridConfig(grid_levels=3, grid_spacing_pct=2.0, direction="long")
         strategy = GridStrategy(symbol="BTC/USDT", config=config)
         levels = strategy.setup_grid(10000.0)
         buy_levels = sorted(
@@ -62,7 +66,7 @@ class TestGridLevelGeneration:
         assert strategy.center_price == 42000.0
 
     def test_grid_amount_per_level(self):
-        config = GridConfig(amount_per_level=0.005)
+        config = GridConfig(amount_per_level=0.005, direction="long")
         strategy = GridStrategy(symbol="BTC/USDT", config=config)
         levels = strategy.setup_grid(50000.0)
         for level in levels:
@@ -73,7 +77,7 @@ class TestSignalDetection:
     """Tests for buy/sell signal detection."""
 
     def test_buy_signal_when_price_drops(self):
-        config = GridConfig(grid_levels=3, grid_spacing_pct=1.0)
+        config = GridConfig(grid_levels=3, grid_spacing_pct=1.0, direction="long")
         strategy = GridStrategy(symbol="BTC/USDT", config=config)
         strategy.setup_grid(50000.0)
         df = make_ohlcv_df(30, base_price=50000.0)
@@ -84,7 +88,7 @@ class TestSignalDetection:
         assert signals[0].type == SignalType.BUY
 
     def test_sell_signal_when_price_rises(self):
-        config = GridConfig(grid_levels=3, grid_spacing_pct=1.0)
+        config = GridConfig(grid_levels=3, grid_spacing_pct=1.0, direction="long")
         strategy = GridStrategy(symbol="BTC/USDT", config=config)
         strategy.setup_grid(50000.0)
         df = make_ohlcv_df(30, base_price=50000.0)
@@ -95,7 +99,7 @@ class TestSignalDetection:
         assert signals[0].type == SignalType.SELL
 
     def test_no_signal_at_center(self):
-        config = GridConfig(grid_levels=3, grid_spacing_pct=1.0)
+        config = GridConfig(grid_levels=3, grid_spacing_pct=1.0, direction="long")
         strategy = GridStrategy(symbol="BTC/USDT", config=config)
         strategy.setup_grid(50000.0)
         df = make_ohlcv_df(30, base_price=50000.0)
@@ -105,7 +109,7 @@ class TestSignalDetection:
         assert len(signals) == 0
 
     def test_filled_level_not_retriggered(self):
-        config = GridConfig(grid_levels=3, grid_spacing_pct=1.0)
+        config = GridConfig(grid_levels=3, grid_spacing_pct=1.0, direction="long")
         strategy = GridStrategy(symbol="BTC/USDT", config=config)
         strategy.setup_grid(50000.0)
         df = make_ohlcv_df(30, base_price=50000.0)
@@ -135,7 +139,7 @@ class TestLevelFilling:
     """Tests for level filling logic."""
 
     def test_filled_level_creates_opposite(self):
-        config = GridConfig(grid_levels=3, grid_spacing_pct=1.0)
+        config = GridConfig(grid_levels=3, grid_spacing_pct=1.0, direction="long")
         strategy = GridStrategy(symbol="BTC/USDT", config=config)
         strategy.setup_grid(50000.0)
         initial_count = len(strategy.levels)
@@ -148,7 +152,7 @@ class TestLevelFilling:
         assert len(strategy.levels) > initial_count
 
     def test_opposite_level_side(self):
-        config = GridConfig(grid_levels=3, grid_spacing_pct=1.0)
+        config = GridConfig(grid_levels=3, grid_spacing_pct=1.0, direction="long")
         strategy = GridStrategy(symbol="BTC/USDT", config=config)
         strategy.setup_grid(50000.0)
         df = make_ohlcv_df(30, base_price=50000.0)
@@ -168,7 +172,8 @@ class TestGridStatus:
     """Tests for grid status reporting."""
 
     def test_status_fields(self):
-        strategy = GridStrategy(symbol="BTC/USDT")
+        config = GridConfig(direction="long")
+        strategy = GridStrategy(symbol="BTC/USDT", config=config)
         strategy.setup_grid(50000.0)
         status = strategy.get_status()
 
