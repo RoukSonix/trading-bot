@@ -10,43 +10,33 @@
 
 **All development MUST use branches + git worktree. NEVER commit directly to main.**
 
-1. **Create branch + worktree:**
-   ```bash
-   cd ~/projects/CentricVoid/trading-bots
-   git worktree add ../trading-bots-<task> -b <branch-name>
-   cd ../trading-bots-<task>
-   ```
-   Branch naming: `sprint-m<N>/<short-description>` (e.g. `sprint-m2/grid-logic`)
+**Automated via `scripts/worktree.sh`:**
 
-2. **Do all work in the worktree**, commit to the branch.
+```bash
+# Setup — creates branch feature/<task> + worktree
+./scripts/worktree.sh create <task-name>
 
-3. **Run tests before pushing** — all tests must pass:
-   ```bash
-   cd jesse-bot && ../.venv/bin/python -m pytest tests/ -v
-   ```
+# Develop in worktree
+cd ../trading-bots-<task-name>
+# ... make changes, commit, push branch ...
 
-4. **When done**, push branch and create PR:
-   ```bash
-   git push origin <branch-name>
-   gh pr create --title "Sprint M<N>: <description>" --body "..."
-   ```
+# After code review — merge to main + cleanup
+./scripts/worktree.sh cleanup <task-name>
 
-5. **Code review is done by a SEPARATE ACP agent** (never the same agent that wrote the code). The reviewer reads the diff and leaves inline comments or approves.
+# Abandon without merge
+./scripts/worktree.sh abort <task-name>
 
-6. **If review has comments** — a NEW ACP agent is immediately spawned to fix them in the same worktree. No manual handoff. After fix is pushed, re-review.
+# List active worktrees
+./scripts/worktree.sh list
+```
 
-7. **After review approval**, merge via GitHub:
-   ```bash
-   gh pr merge <PR-number> --merge
-   ```
+**Rules:**
+1. Code review is done by a **SEPARATE** ACP agent (never the developer)
+2. If review has comments — a NEW agent fixes them in the same worktree
+3. Run tests before pushing: `pytest tests/ -v`
+4. After merge — rebuild Docker if code changed
 
-8. **Cleanup worktree (ALWAYS after merge):**
-   ```bash
-   git worktree remove ../trading-bots-<task>
-   git branch -d <branch-name>
-   ```
-
-**Why:** Multiple ACP agents develop in parallel. Direct commits to main cause conflicts, untested code, and broken builds. Code review by a different agent catches blind spots.
+**Why:** Multiple ACP agents develop in parallel. Direct commits to main cause conflicts, untested code, and broken builds.
 
 ---
 
