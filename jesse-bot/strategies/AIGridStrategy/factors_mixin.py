@@ -217,7 +217,9 @@ class FactorsMixin:
             volume = df['volume']
             vol_sma = volume.rolling(20).mean()
             if not np.isnan(vol_sma.iloc[-1]) and vol_sma.iloc[-1] > 0:
-                result['volume_sma_ratio'] = float(volume.iloc[-1] / vol_sma.iloc[-1])
+                ratio = float(volume.iloc[-1] / vol_sma.iloc[-1])
+                result['volume_sma_ratio'] = ratio
+                result['volume_score'] = float(np.clip((ratio - 1.0) / 2.0, -1.0, 1.0))
 
         # Composite
         result['composite_score'] = float(np.clip(
