@@ -21,6 +21,15 @@ from .grid_logic import (
 from .ai_mixin import AIMixin
 from .factors_mixin import FactorsMixin
 from .sentiment_mixin import SentimentMixin
+from .alerts_mixin import AlertsMixin
+
+# state_provider is at jesse-bot root, not in the strategy package
+try:
+    from state_provider import export_state
+    _HAS_STATE_PROVIDER = True
+except ImportError:
+    export_state = None
+    _HAS_STATE_PROVIDER = False
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +70,10 @@ class AIGridStrategy(Strategy):
         self._ai_mixin = AIMixin()
         self._factors_mixin = FactorsMixin()
         self._sentiment_mixin = SentimentMixin(cache_interval_candles=60)
+        self._alerts_mixin = AlertsMixin(is_live=False)  # Updated in before() based on context
+
+        # Status alert counter
+        self.vars['status_alert_counter'] = 0
 
     def _get_grid_manager(self) -> GridManager:
         """Get or create the GridManager instance with current hyperparameters."""
@@ -186,6 +199,18 @@ class AIGridStrategy(Strategy):
                 'min': 0.0,
                 'max': 1.0,
                 'default': 0.3,
+            },
+            {
+                'name': 'alerts_enabled',
+                'type': bool,
+                'default': True,
+            },
+            {
+                'name': 'state_export_interval',
+                'type': int,
+                'min': 5,
+                'max': 60,
+                'default': 10,
             },
         ]
 
@@ -331,6 +356,18 @@ class AIGridStrategy(Strategy):
             gm.direction = new_direction
             self.vars['prev_grid_direction'] = new_direction
 
+        # Periodic status alert (every 60 candles)
+        if self.hp.get('alerts_enabled', True):
+            self.vars['status_alert_counter'] += 1
+            if self.vars['status_alert_counter'] >= 60:
+                self.vars['status_alert_counter'] = 0
+                self._alerts_mixin.send_status_alert({
+                    'status': 'running',
+                    'symbol': self.symbol,
+                    'current_price': self.price,
+                    'total_value': self.balance,
+                })
+
         # AI periodic analysis (with factors + sentiment context)
         if self.hp.get('ai_enabled', True):
             interval = self.hp.get('ai_review_interval', 60)
@@ -338,8 +375,16 @@ class AIGridStrategy(Strategy):
                 self._run_ai_analysis()
 
     def after(self):
-        """Called after strategy logic each candle."""
-        pass
+        """Called after strategy logic each candle. Exports state at configured interval."""
+        if not _HAS_STATE_PROVIDER:
+            return
+
+        interval = self.hp.get('state_export_interval', 10)
+        if interval > 0 and self.vars['candle_count'] % interval == 0:
+            try:
+                export_state(self)
+            except Exception as e:
+                logger.warning(f"State export failed: {e}")
 
     def update_position(self):
         """Called every candle when position is open. Manages trailing stop and AI review."""
@@ -358,7 +403,7 @@ class AIGridStrategy(Strategy):
                 self._run_ai_position_review()
 
     def on_open_position(self, order):
-        """Called when position opens. Initialize trailing stop and log AI context."""
+        """Called when position opens. Initialize trailing stop, send alert, log AI context."""
         side = 'long' if self.is_long else 'short'
         tsm = TrailingStopManager(
             activation_pct=self.hp['trailing_activation_pct'],
@@ -366,6 +411,16 @@ class AIGridStrategy(Strategy):
         )
         tsm.start(self.position.entry_price, side)
         self.vars['trailing_stop'] = tsm
+
+        # Trade alert
+        if self.hp.get('alerts_enabled', True):
+            self._alerts_mixin.send_trade_alert({
+                'action': 'open',
+                'symbol': self.symbol,
+                'side': side,
+                'price': self.position.entry_price,
+                'amount': abs(self.position.qty),
+            })
 
         # Log AI analysis context if available
         analysis = self.vars.get('last_ai_analysis')
@@ -378,7 +433,22 @@ class AIGridStrategy(Strategy):
             )
 
     def on_close_position(self, order, closed_trade):
-        """Called when position closes."""
+        """Called when position closes. Send trade alert with PnL."""
+        # Trade alert with PnL
+        if self.hp.get('alerts_enabled', True):
+            pnl = getattr(closed_trade, 'pnl', 0.0)
+            pnl_pct = getattr(closed_trade, 'pnl_percentage', 0.0)
+            side = getattr(closed_trade, 'type', 'unknown')
+            self._alerts_mixin.send_trade_alert({
+                'action': 'close',
+                'symbol': self.symbol,
+                'side': side,
+                'price': getattr(closed_trade, 'exit_price', self.price),
+                'amount': abs(getattr(closed_trade, 'qty', 0.0)),
+                'pnl': pnl,
+                'pnl_pct': pnl_pct,
+            })
+
         gm = self._get_grid_manager()
         gm.reset()
         self.vars['filled_levels'] = set()
@@ -430,8 +500,14 @@ class AIGridStrategy(Strategy):
                 f"confidence={analysis.get('confidence'):.2f}, "
                 f"recommendation={analysis.get('recommendation')}"
             )
+
+            # Send AI decision alert
+            if self.hp.get('alerts_enabled', True):
+                self._alerts_mixin.send_ai_decision_alert(analysis)
         except Exception as e:
             logger.warning(f"AI analysis failed: {e}")
+            if self.hp.get('alerts_enabled', True):
+                self._alerts_mixin.send_error_alert(str(e), context="ai_analysis")
 
     def _run_ai_position_review(self):
         """Run AI position review and act on recommendation."""
@@ -468,6 +544,8 @@ class AIGridStrategy(Strategy):
                 self.liquidate()
         except Exception as e:
             logger.warning(f"AI position review failed: {e}")
+            if self.hp.get('alerts_enabled', True):
+                self._alerts_mixin.send_error_alert(str(e), context="ai_position_review")
 
     # ==================== Helpers ====================
 
