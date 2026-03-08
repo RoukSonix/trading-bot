@@ -101,29 +101,56 @@ async def get_pnl_summary(
     """Get PnL summary."""
     session = get_session()
     try:
-        query = session.query(TradeLog)
-        if symbol:
-            query = query.filter(TradeLog.symbol == symbol)
+        # Try TradeLog first (has explicit pnl), fallback to Trade table
+        logs = session.query(TradeLog).all()
         
-        logs = query.all()
+        if logs:
+            realized_pnl = sum(float(log.pnl or 0) for log in logs)
+            winning = [log for log in logs if float(log.pnl or 0) > 0]
+            losing = [log for log in logs if float(log.pnl or 0) < 0]
+            total_trades = len(logs)
+        else:
+            # Calculate P&L from Trade table (buy/sell pairs)
+            query = session.query(Trade)
+            if symbol:
+                query = query.filter(Trade.symbol == symbol)
+            trades = query.order_by(Trade.timestamp).all()
+            
+            total_cost_buys = sum(float(t.cost or 0) for t in trades if t.side == "buy")
+            total_cost_sells = sum(float(t.cost or 0) for t in trades if t.side == "sell")
+            total_amount_buys = sum(float(t.amount or 0) for t in trades if t.side == "buy")
+            total_amount_sells = sum(float(t.amount or 0) for t in trades if t.side == "sell")
+            
+            realized_pnl = total_cost_sells - total_cost_buys
+            
+            # Approximate winning/losing from paired trades
+            buys = [t for t in trades if t.side == "buy"]
+            sells = [t for t in trades if t.side == "sell"]
+            winning = [s for s in sells if any(float(s.price) > float(b.price) for b in buys)]
+            losing = [s for s in sells if all(float(s.price) <= float(b.price) for b in buys)]
+            total_trades = len(trades)
         
-        realized_pnl = sum(float(log.pnl or 0) for log in logs)
-        unrealized_pnl = 0  # Would need live position data
-
-        winning = [log for log in logs if float(log.pnl or 0) > 0]
-        losing = [log for log in logs if float(log.pnl or 0) < 0]
+        # Get unrealized from state
+        from shared.core.state import read_state
+        state = read_state()
+        unrealized_pnl = 0.0
+        if state:
+            held_btc = getattr(state, "paper_holdings_btc", 0) or 0
+            if held_btc > 0 and state.current_price:
+                # Unrealized = current value of holdings - avg cost
+                avg_buy_price = total_cost_buys / total_amount_buys if total_amount_buys > 0 else 0
+                unrealized_pnl = held_btc * (state.current_price - avg_buy_price)
         
-        total_trades = len(logs)
         win_rate = len(winning) / total_trades if total_trades > 0 else 0
         
         return PnLSummary(
-            realized_pnl=realized_pnl,
-            unrealized_pnl=unrealized_pnl,
-            total_pnl=realized_pnl + unrealized_pnl,
+            realized_pnl=round(realized_pnl, 2),
+            unrealized_pnl=round(unrealized_pnl, 2),
+            total_pnl=round(realized_pnl + unrealized_pnl, 2),
             total_trades=total_trades,
             winning_trades=len(winning),
             losing_trades=len(losing),
-            win_rate=win_rate,
+            win_rate=round(win_rate, 4),
         )
     finally:
         session.close()
@@ -137,24 +164,41 @@ async def get_pnl_history(
     """Get PnL history for charting."""
     session = get_session()
     try:
-        query = session.query(TradeLog)
-        if symbol:
-            query = query.filter(TradeLog.symbol == symbol)
+        # Try TradeLog first, fallback to Trade
+        logs = session.query(TradeLog).order_by(TradeLog.timestamp.asc()).all()
         
-        logs = query.order_by(TradeLog.timestamp.asc()).all()
-
-        # Cumulative PnL
+        if logs:
+            cumulative = 0
+            history = []
+            for log in logs:
+                if log.pnl is not None:
+                    cumulative += log.pnl
+                    history.append({
+                        "timestamp": log.datetime_utc.isoformat(),
+                        "pnl": float(log.pnl),
+                        "cumulative_pnl": cumulative,
+                        "symbol": log.symbol,
+                    })
+            return {"history": history}
+        
+        # Fallback: build history from Trade table
+        query = session.query(Trade)
+        if symbol:
+            query = query.filter(Trade.symbol == symbol)
+        trades = query.order_by(Trade.timestamp.asc()).all()
+        
         cumulative = 0
         history = []
-        for log in logs:
-            if log.pnl is not None:
-                cumulative += log.pnl
-                history.append({
-                    "timestamp": log.datetime_utc.isoformat(),
-                    "pnl": float(log.pnl),
-                    "cumulative_pnl": cumulative,
-                    "symbol": log.symbol,
-                })
+        for t in trades:
+            cost = float(t.cost or 0)
+            pnl = -cost if t.side == "buy" else cost
+            cumulative += pnl
+            history.append({
+                "timestamp": t.created_at.isoformat() if t.created_at else "",
+                "pnl": round(pnl, 4),
+                "cumulative_pnl": round(cumulative, 4),
+                "symbol": t.symbol,
+            })
         
         return {"history": history}
     finally:
