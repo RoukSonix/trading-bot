@@ -1,921 +1,874 @@
-"""Streamlit dashboard for trading bot monitoring."""
+"""Grid trading dashboard — minimalist, data-dense, functional."""
 
 import os
-import streamlit as st
-import requests
+import statistics
 import time
+from datetime import datetime, timezone
 
-from shared.dashboard.components import (
-    GridVisualization,
-    PnLChart,
-    TradeTable,
-    CandlestickChart,
-    OrderBook,
+import plotly.graph_objects as go
+import requests
+import streamlit as st
+
+API_URL = os.getenv("API_URL", "http://localhost:8000")
+
+
+# ── API helper ───────────────────────────────────────────────────────────────
+
+
+def _api(endpoint, method="GET", **kwargs):
+    """Fetch from trading bot API. Returns JSON or None."""
+    try:
+        r = getattr(requests, method.lower())(
+            f"{API_URL}{endpoint}", timeout=5, **kwargs
+        )
+        return r.json() if r.ok else None
+    except requests.RequestException:
+        return None
+
+
+# ── Theme CSS ────────────────────────────────────────────────────────────────
+
+CSS = """<style>
+/* Hide Streamlit chrome */
+#MainMenu, footer, .viewerBadge_container__r5tak { display: none; }
+[data-testid="collapsedControl"] { display: none; }
+
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 0; border-bottom: 1px solid #1e1e1e; background: transparent;
+}
+.stTabs [data-baseweb="tab"] {
+    font-size: 0.72rem; font-weight: 500; letter-spacing: 0.1em;
+    text-transform: uppercase; color: #555; padding: 0.6rem 1.5rem;
+    background: transparent;
+}
+.stTabs [aria-selected="true"] {
+    color: #d0d0d0 !important; border-bottom: 2px solid #d0d0d0 !important;
+    background: transparent !important;
+}
+
+/* Metrics */
+[data-testid="stMetricValue"] {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+[data-testid="stMetricLabel"] {
+    font-size: 0.68rem !important; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #555 !important;
+}
+
+/* Buttons */
+.stButton > button { border-radius: 2px; font-size: 0.8rem; letter-spacing: 0.03em; }
+
+/* ── Custom HTML elements ── */
+
+.hdr {
+    display: flex; align-items: baseline; gap: 1.5rem;
+    padding: 0 0 0.75rem 0; border-bottom: 1px solid #1e1e1e;
+    margin-bottom: 0.5rem;
+}
+.hdr-sym {
+    font-size: 0.8rem; font-weight: 600; color: #808080;
+    letter-spacing: 0.08em; text-transform: uppercase;
+}
+.hdr-price {
+    font-size: 1.3rem; font-weight: 700; color: #e0e0e0;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+.hdr-dot {
+    width: 6px; height: 6px; border-radius: 50%; display: inline-block;
+}
+.hdr-status {
+    font-size: 0.7rem; font-weight: 500; letter-spacing: 0.1em;
+    text-transform: uppercase; display: inline-flex; align-items: center; gap: 0.4rem;
+}
+
+/* Balance */
+.bal-label {
+    font-size: 0.65rem; font-weight: 500; color: #444;
+    letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 0.15rem;
+}
+.bal-value {
+    font-size: 2.2rem; font-weight: 700; line-height: 1.1;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+.bal-pos { color: #22c55e; }
+.bal-neg { color: #ef4444; }
+.bal-zero { color: #666; }
+.bal-sub {
+    font-size: 0.78rem; font-weight: 500; margin-top: 0.15rem;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+/* Section label */
+.sect {
+    font-size: 0.65rem; font-weight: 600; color: #444;
+    letter-spacing: 0.12em; text-transform: uppercase; padding: 1rem 0 0.4rem 0;
+}
+
+/* Position card */
+.pos-card {
+    background: #111; border: 1px solid #1e1e1e;
+    padding: 0.75rem 1rem; margin: 0.4rem 0;
+}
+.pos-hdr {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 0.3rem;
+}
+.pos-side {
+    font-size: 0.65rem; font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase; padding: 0.1rem 0.4rem;
+}
+.pos-long { color: #22c55e; border: 1px solid #22c55e33; }
+.pos-short { color: #ef4444; border: 1px solid #ef444433; }
+.pos-flat { color: #666; border: 1px solid #33333333; }
+.pos-pnl {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-weight: 600; font-size: 1rem;
+}
+.pos-details {
+    display: flex; gap: 2rem; font-size: 0.78rem; color: #808080;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+/* Activity log */
+.log-entry {
+    display: flex; gap: 0.8rem; padding: 0.35rem 0;
+    border-bottom: 1px solid #141414; font-size: 0.78rem;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    align-items: baseline;
+}
+.log-time { color: #444; white-space: nowrap; min-width: 5rem; }
+.log-tag {
+    font-weight: 600; font-size: 0.6rem; letter-spacing: 0.05em;
+    padding: 0.08rem 0.3rem; min-width: 3.2rem; text-align: center;
+    white-space: nowrap;
+}
+.tag-trade { color: #22c55e; border: 1px solid #22c55e44; }
+.tag-signal { color: #3b82f6; border: 1px solid #3b82f644; }
+.tag-error { color: #ef4444; border: 1px solid #ef444444; }
+.tag-info { color: #666; border: 1px solid #66666644; }
+.tag-warn { color: #eab308; border: 1px solid #eab30844; }
+.log-msg { color: #999; }
+
+/* Grid ladder */
+.grid-row {
+    display: flex; align-items: center; padding: 0.3rem 0.8rem;
+    border-bottom: 1px solid #141414;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+}
+.grid-row:last-child { border-bottom: none; }
+.grid-price { min-width: 7rem; font-weight: 500; color: #d0d0d0; }
+.grid-side {
+    min-width: 3rem; font-weight: 600; font-size: 0.65rem;
+    letter-spacing: 0.05em; text-transform: uppercase;
+}
+.g-buy { color: #22c55e; }
+.g-sell { color: #ef4444; }
+.grid-status { min-width: 4rem; font-size: 0.65rem; color: #555; }
+.grid-filled { color: #808080; text-decoration: line-through; }
+.grid-tpsl { font-size: 0.7rem; color: #555; margin-left: auto; }
+.grid-current {
+    background: #1a1700; border: 1px solid #eab30833;
+    padding: 0.2rem 0.8rem; font-size: 0.72rem; color: #eab308;
+    font-weight: 600;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+/* Config groups */
+.cfg-group {
+    border: 1px solid #1e1e1e; padding: 0.75rem 1rem; margin: 0.4rem 0;
+}
+.cfg-row {
+    display: flex; justify-content: space-between; padding: 0.25rem 0;
+    font-size: 0.78rem; border-bottom: 1px solid #141414;
+}
+.cfg-row:last-child { border-bottom: none; }
+.cfg-key { color: #555; }
+.cfg-val {
+    color: #d0d0d0; font-weight: 500;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+/* Muted placeholder text */
+.muted { color: #333; font-size: 0.8rem; padding: 2rem; text-align: center; }
+</style>"""
+
+
+# ── Plotly base layout ───────────────────────────────────────────────────────
+
+_PLOTLY_BASE = dict(
+    template="plotly_dark",
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    font=dict(family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace"),
+    showlegend=False,
 )
 
-# Configuration
-API_BASE_URL = os.getenv("API_URL", "http://localhost:8000")
 
-
-def fetch_api(endpoint: str, method: str = "GET", **kwargs):
-    """Fetch data from API.
-    
-    Args:
-        endpoint: API endpoint (e.g., "/api/status")
-        method: HTTP method
-        **kwargs: Additional request arguments
-        
-    Returns:
-        JSON response or None on error
-    """
-    try:
-        url = f"{API_BASE_URL}{endpoint}"
-        if method == "GET":
-            response = requests.get(url, timeout=5, **kwargs)
-        elif method == "POST":
-            response = requests.post(url, timeout=5, **kwargs)
-        elif method == "DELETE":
-            response = requests.delete(url, timeout=5, **kwargs)
-        else:
-            return None
-        
-        if response.ok:
-            return response.json()
-        return None
-    except requests.exceptions.RequestException:
-        return None
-
-
-def get_theme_css(dark_mode: bool) -> str:
-    """Get CSS for theme."""
-    if dark_mode:
-        return """
-        <style>
-        .main-header {
-            font-size: 2.5rem;
-            color: #2196F3;
-            text-align: center;
-            margin-bottom: 1rem;
-        }
-        .status-running { color: #26A69A; }
-        .status-paused { color: #FFA726; }
-        .status-stopped { color: #EF5350; }
-        .metric-card {
-            background-color: #1E1E1E;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            border-left: 4px solid #2196F3;
-        }
-        .price-up { color: #26A69A; font-weight: bold; }
-        .price-down { color: #EF5350; font-weight: bold; }
-        .price-ticker {
-            font-size: 1.8rem;
-            font-weight: bold;
-            text-align: center;
-            padding: 0.5rem;
-            border-radius: 0.5rem;
-            margin-bottom: 1rem;
-        }
-        </style>
-        """
-    else:
-        return """
-        <style>
-        .main-header {
-            font-size: 2.5rem;
-            color: #1976D2;
-            text-align: center;
-            margin-bottom: 1rem;
-        }
-        .status-running { color: #00897B; }
-        .status-paused { color: #F57C00; }
-        .status-stopped { color: #E53935; }
-        .metric-card {
-            background-color: #F5F5F5;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            border-left: 4px solid #1976D2;
-        }
-        .price-up { color: #00897B; font-weight: bold; }
-        .price-down { color: #E53935; font-weight: bold; }
-        .price-ticker {
-            font-size: 1.8rem;
-            font-weight: bold;
-            text-align: center;
-            padding: 0.5rem;
-            border-radius: 0.5rem;
-            background-color: #FAFAFA;
-            margin-bottom: 1rem;
-        }
-        </style>
-        """
-
-
-def render_price_ticker(status: dict | None):
-    """Render live price ticker in header."""
-    if not status:
-        return
-    
-    current_price = status.get("current_price")
-    if not current_price:
-        # Try fetching from candles API
-        price_data = fetch_api("/api/candles/current-price")
-        if price_data:
-            current_price = price_data.get("price")
-    
-    if not current_price:
-        return
-    
-    # Store previous price for comparison
-    prev_price = st.session_state.get("prev_price", current_price)
-    st.session_state["prev_price"] = current_price
-    
-    # Determine price direction
-    if current_price > prev_price:
-        direction = "up"
-        arrow = "▲"
-        color_class = "price-up"
-    elif current_price < prev_price:
-        direction = "down"
-        arrow = "▼"
-        color_class = "price-down"
-    else:
-        direction = "flat"
-        arrow = "●"
-        color_class = ""
-    
-    symbol = status.get("symbol", "BTC/USDT")
-    
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.markdown(
-            f'<div class="price-ticker">'
-            f'<span class="{color_class}">{arrow}</span> '
-            f'{symbol}: <span class="{color_class}">${current_price:,.2f}</span>'
-            f'</div>',
-            unsafe_allow_html=True
-        )
+# ── Main ─────────────────────────────────────────────────────────────────────
 
 
 def main():
-    """Main dashboard application."""
     st.set_page_config(
-        page_title="Trading Bot Dashboard",
-        page_icon="🤖",
+        page_title="GRID",
+        page_icon=None,
         layout="wide",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="collapsed",
     )
-    
-    # Initialize session state
-    if "dark_mode" not in st.session_state:
-        st.session_state["dark_mode"] = True
-    if "prev_price" not in st.session_state:
-        st.session_state["prev_price"] = 0
-    if "last_trade_count" not in st.session_state:
-        st.session_state["last_trade_count"] = 0
-    if "last_bot_state" not in st.session_state:
-        st.session_state["last_bot_state"] = None
-    
-    # Apply theme CSS
-    st.markdown(get_theme_css(st.session_state["dark_mode"]), unsafe_allow_html=True)
-    
-    # Header
-    st.markdown('<h1 class="main-header">🤖 Trading Bot Dashboard</h1>', unsafe_allow_html=True)
-    
-    # Get status for header
-    status = fetch_api("/api/status")
-    
-    # Live Price Ticker
-    render_price_ticker(status)
-    
-    # Check for notifications
-    _check_notifications(status)
-    
-    # Sidebar
-    with st.sidebar:
-        st.header("⚙️ Controls")
-        
-        # Theme toggle
-        st.subheader("🎨 Theme")
-        if st.toggle("Dark Mode", value=st.session_state["dark_mode"], key="theme_toggle"):
-            st.session_state["dark_mode"] = True
-        else:
-            st.session_state["dark_mode"] = False
-        
-        st.divider()
-        
-        # Refresh settings
-        auto_refresh = st.checkbox("Auto Refresh", value=True)
-        refresh_interval = st.slider("Refresh Interval (sec)", 5, 60, 10)
-        
-        if st.button("🔄 Refresh Now"):
-            st.rerun()
-        
-        st.divider()
-        
-        # Bot controls
-        st.subheader("🎮 Bot Control")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("⏸️ Pause", use_container_width=True):
-                result = fetch_api("/api/bot/pause", method="POST")
-                if result and result.get("success"):
-                    st.toast("✅ Bot paused", icon="⏸️")
-                else:
-                    st.toast("❌ Failed to pause", icon="⚠️")
-        
-        with col2:
-            if st.button("▶️ Resume", use_container_width=True):
-                result = fetch_api("/api/bot/resume", method="POST")
-                if result and result.get("success"):
-                    st.toast("✅ Bot resumed", icon="▶️")
-                else:
-                    st.toast("❌ Failed to resume", icon="⚠️")
-        
-        if st.button("🛑 Stop Bot", type="secondary", use_container_width=True):
-            if st.button("⚠️ Confirm Stop"):
-                result = fetch_api("/api/bot/stop", method="POST")
-                if result and result.get("success"):
-                    st.toast("⚠️ Bot stopped", icon="🛑")
-                else:
-                    st.toast("❌ Failed to stop", icon="⚠️")
-        
-        st.divider()
-        
-        # Force Trade Buttons
-        st.subheader("⚡ Force Trade")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🟢 Force Buy", use_container_width=True, type="primary"):
-                result = fetch_api("/api/orders/force-buy", method="POST")
-                if result and result.get("success"):
-                    price = result.get("price", 0)
-                    st.toast(f"✅ Buy executed @ ${price:,.2f}", icon="🟢")
-                else:
-                    msg = result.get("message", "Failed") if result else "API error"
-                    st.toast(f"❌ {msg}", icon="⚠️")
-        
-        with col2:
-            if st.button("🔴 Force Sell", use_container_width=True, type="secondary"):
-                result = fetch_api("/api/orders/force-sell", method="POST")
-                if result and result.get("success"):
-                    price = result.get("price", 0)
-                    st.toast(f"✅ Sell executed @ ${price:,.2f}", icon="🔴")
-                else:
-                    msg = result.get("message", "Failed") if result else "API error"
-                    st.toast(f"❌ {msg}", icon="⚠️")
-        
-        st.divider()
-        
-        # API status
-        st.subheader("🔌 API Status")
-        if status:
-            st.success("Connected")
-            st.json({
-                "state": status.get("state"),
-                "symbol": status.get("symbol"),
-                "ticks": status.get("ticks"),
-            })
-        else:
-            st.error("Disconnected")
-            st.info("Start the API server with:\n`uvicorn shared.api.main:app`")
-    
-    # Main content
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        "📊 Overview",
-        "📈 Trading Chart",
-        "🔲 Grid Trading",
-        "💰 PnL Analysis",
-        "📋 Trade History",
-        "📑 Orders",
-        "🧪 Backtest",
-    ])
-    
-    # Initialize components
-    grid_viz = GridVisualization()
-    pnl_chart = PnLChart()
-    trade_table = TradeTable()
-    candle_chart = CandlestickChart()
-    order_book = OrderBook()
-    
-    with tab1:
-        _render_overview(status)
-    
-    with tab2:
-        _render_chart_tab(candle_chart, status)
-    
-    with tab3:
-        _render_grid_tab(grid_viz, status)
-    
-    with tab4:
-        _render_pnl_tab(pnl_chart)
-    
-    with tab5:
-        _render_trades_tab(trade_table)
-    
-    with tab6:
-        _render_orders_tab(order_book)
+    st.markdown(CSS, unsafe_allow_html=True)
 
-    with tab7:
-        _render_backtest_tab()
+    for key, default in [("auto_refresh", True), ("refresh_sec", 10)]:
+        if key not in st.session_state:
+            st.session_state[key] = default
 
-    # Auto refresh
-    if auto_refresh:
-        time.sleep(refresh_interval)
+    status = _api("/api/status")
+    _header(status)
+
+    tabs = st.tabs(["OVERVIEW", "ACTIVITY", "GRID", "SETTINGS"])
+    with tabs[0]:
+        _tab_overview(status)
+    with tabs[1]:
+        _tab_activity(status)
+    with tabs[2]:
+        _tab_grid(status)
+    with tabs[3]:
+        _tab_settings(status)
+
+    if st.session_state.auto_refresh:
+        time.sleep(st.session_state.refresh_sec)
         st.rerun()
 
 
-def _check_notifications(status: dict | None):
-    """Check for changes and show toast notifications."""
+# ── Header ───────────────────────────────────────────────────────────────────
+
+
+def _header(status):
     if not status:
+        st.markdown(
+            '<div class="hdr">'
+            '<span class="hdr-sym">---</span>'
+            '<span class="hdr-status">'
+            '<span class="hdr-dot" style="background:#666"></span>'
+            '<span style="color:#666">OFFLINE</span>'
+            "</span></div>",
+            unsafe_allow_html=True,
+        )
         return
-    
-    # Check for state change
-    current_state = status.get("state")
-    if st.session_state["last_bot_state"] is not None:
-        if current_state != st.session_state["last_bot_state"]:
-            st.toast(f"🔔 Bot state changed: {current_state.upper()}", icon="🤖")
-    st.session_state["last_bot_state"] = current_state
-    
-    # Check for new trades
-    trades_data = fetch_api("/api/trades", params={"per_page": 1})
-    if trades_data:
-        current_count = trades_data.get("total", 0)
-        if st.session_state["last_trade_count"] > 0:
-            if current_count > st.session_state["last_trade_count"]:
-                new_trades = current_count - st.session_state["last_trade_count"]
-                st.toast(f"📈 {new_trades} new trade(s) executed!", icon="💰")
-        st.session_state["last_trade_count"] = current_count
-    
-    # Check for errors
-    errors = status.get("errors", 0)
-    if errors > 0:
-        prev_errors = st.session_state.get("last_errors", 0)
-        if errors > prev_errors:
-            st.toast(f"⚠️ {errors - prev_errors} new error(s)", icon="🚨")
-        st.session_state["last_errors"] = errors
+
+    symbol = status.get("symbol", "---")
+    price = status.get("current_price")
+    state = status.get("state", "unknown")
+
+    if not price:
+        pd = _api("/api/candles/current-price")
+        price = pd.get("price") if pd else None
+
+    price_str = f"${price:,.2f}" if price else "---"
+    colors = {"trading": "#22c55e", "waiting": "#eab308", "paused": "#eab308"}
+    c = colors.get(state, "#666")
+
+    st.markdown(
+        f'<div class="hdr">'
+        f'<span class="hdr-sym">{symbol}</span>'
+        f'<span class="hdr-price">{price_str}</span>'
+        f'<span class="hdr-status">'
+        f'<span class="hdr-dot" style="background:{c}"></span>'
+        f'<span style="color:{c}">{state.upper()}</span>'
+        f"</span></div>",
+        unsafe_allow_html=True,
+    )
 
 
-def _render_overview(status: dict | None):
-    """Render overview tab."""
-    st.header("📊 Bot Overview")
-    
+# ── Tab 1: Overview ─────────────────────────────────────────────────────────
+
+
+def _tab_overview(status):
     if not status:
-        st.warning("⚠️ Unable to connect to trading bot API")
-        st.info("""
-        **To start the dashboard:**
-        1. Run the FastAPI server: `uvicorn shared.api.main:app --reload`
-        2. Or use the dashboard script: `python scripts/run_dashboard.py`
-        """)
+        st.warning("Cannot connect to API")
+        st.code("uvicorn shared.api.main:app --host 0.0.0.0 --port 8000")
         return
-    
-    # Status metrics
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        state = status.get("state", "unknown")
-        state_emoji = {"trading": "🟢", "waiting": "🟡", "paused": "⏸️"}.get(state, "❓")
-        st.metric("Status", f"{state_emoji} {state.upper()}")
-    
-    with col2:
-        st.metric("Symbol", status.get("symbol", "N/A"))
-    
-    with col3:
-        price = status.get("current_price")
-        st.metric("Current Price", f"${price:,.2f}" if price else "N/A")
-    
-    with col4:
-        uptime = status.get("uptime_seconds")
-        if uptime:
-            hours = int(uptime // 3600)
-            minutes = int((uptime % 3600) // 60)
-            st.metric("Uptime", f"{hours}h {minutes}m")
-        else:
-            st.metric("Uptime", "N/A")
-    
-    st.divider()
-    
-    # Current position
-    st.subheader("💼 Current Position")
-    positions = fetch_api("/api/positions")
 
+    pnl_data = _api("/api/trades/pnl")
+    positions = _api("/api/positions")
+    pnl_history = _api("/api/trades/history")
+
+    # Compute totals
+    total_pnl = (pnl_data.get("total_pnl", 0) or 0) if pnl_data else 0
+    win_rate = ((pnl_data.get("win_rate", 0) or 0) * 100) if pnl_data else 0
+
+    unrealized = 0.0
     if positions and positions.get("positions"):
         for pos in positions["positions"]:
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                side = pos.get("side", "flat")
-                side_emoji = "🟢" if side == "long" else "🔴" if side == "short" else "⚪"
-                st.metric("Side", f"{side_emoji} {side.upper()}")
-            with col2:
-                st.metric("Amount", f"{pos.get('amount', 0):.6f}")
-            with col3:
-                st.metric("Entry Price", f"${pos.get('entry_price', 0):,.2f}")
-            with col4:
-                pnl = pos.get("unrealized_pnl", 0)
-                st.metric("Unrealized PnL", f"${pnl:,.2f}", delta=f"{pnl:+,.2f}")
+            unrealized += pos.get("unrealized_pnl", 0) or 0
 
-            # Long vs Short exposure (Sprint 20)
-            long_amt = pos.get("long_amount", 0) or 0
-            short_amt = pos.get("short_amount", 0) or 0
-            if long_amt > 0 or short_amt > 0:
-                st.divider()
-                st.subheader("📊 Exposure Breakdown")
-                ec1, ec2, ec3, ec4 = st.columns(4)
-                with ec1:
-                    st.metric("🟢 Long Size", f"{long_amt:.6f}")
-                with ec2:
-                    long_entry = pos.get("long_entry", 0) or 0
-                    st.metric("Long Entry", f"${long_entry:,.2f}")
-                with ec3:
-                    st.metric("🔴 Short Size", f"{short_amt:.6f}")
-                with ec4:
-                    short_entry = pos.get("short_entry", 0) or 0
-                    st.metric("Short Entry", f"${short_entry:,.2f}")
+    balance = total_pnl + unrealized
+    history = (pnl_history.get("history") or []) if pnl_history else []
 
-                ne1, ne2 = st.columns(2)
-                with ne1:
-                    net = long_amt - short_amt
-                    net_emoji = "📈" if net > 0 else "📉" if net < 0 else "➡️"
-                    st.metric("Net Exposure", f"{net_emoji} {net:.6f}")
-                with ne2:
-                    direction = pos.get("direction", "long")
-                    st.metric("Direction", direction.upper())
-    else:
-        st.info("No open positions")
+    # Compute metrics from history
+    profit_factor = _compute_profit_factor(history)
+    sharpe = _compute_sharpe(history)
+    max_dd = _compute_max_drawdown(history)
 
-    st.divider()
+    # ── Balance + Equity Curve ──
+    col_bal, col_chart = st.columns([1, 2])
 
-    # Strategy Engine (Sprint 22)
-    _render_strategy_section(status)
-
-    st.divider()
-
-    # Quick stats
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.subheader("📈 Quick Stats")
-        st.metric("Ticks", status.get("ticks", 0))
-        st.metric("Errors", status.get("errors", 0))
-
-    with col2:
-        st.subheader("⚙️ Configuration")
-        config = fetch_api("/api/bot/config")
-        if config:
-            st.text(f"Grid Levels: {config.get('grid_levels', 'N/A')}")
-            st.text(f"Grid Spacing: {config.get('grid_spacing_pct', 'N/A')}%")
-            st.text(f"Amount/Level: {config.get('amount_per_level', 'N/A')}")
-            st.text(f"Direction: {config.get('direction', 'both')}")
-            st.text(f"Leverage: {config.get('leverage', '1.0')}x")
-            st.text(f"AI Enabled: {'Yes' if config.get('ai_enabled') else 'No'}")
-
-
-def _render_strategy_section(status: dict | None):
-    """Render Strategy Engine section in Overview (Sprint 22)."""
-    st.subheader("🧠 Strategy Engine")
-
-    strategy_engine = status.get("strategy_engine") if status else None
-
-    if not strategy_engine:
-        # Fallback: try fetching from API
-        strategy_engine = fetch_api("/api/bot/strategy-engine")
-
-    if not strategy_engine:
-        st.info("Strategy engine data not available")
-        return
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        active = strategy_engine.get("active_strategy", "N/A")
-        st.metric("Active Strategy", active)
-
-    with col2:
-        regime = strategy_engine.get("current_regime", "N/A")
-        regime_emoji = {
-            "trending_up": "📈",
-            "trending_down": "📉",
-            "ranging": "↔️",
-            "high_volatility": "🌊",
-            "low_volatility": "😴",
-            "breakout": "💥",
-        }.get(regime, "❓")
-        st.metric("Market Regime", f"{regime_emoji} {regime}")
-
-    with col3:
-        strategies = strategy_engine.get("registered_strategies", [])
-        st.metric("Strategies Loaded", len(strategies))
-
-    with col4:
-        switches = strategy_engine.get("strategy_switches", 0)
-        st.metric("Strategy Switches", switches)
-
-    # Strategy switch history
-    history = strategy_engine.get("switch_history", [])
-    if history:
-        with st.expander("Recent Strategy Switches"):
-            for entry in reversed(history[-5:]):
-                st.text(
-                    f"{entry.get('from', '?')} -> {entry.get('to', '?')} "
-                    f"(regime={entry.get('regime', '?')}, RSI={entry.get('rsi', 0):.1f})"
-                )
-
-    # Registered strategies list
-    if strategies:
-        with st.expander("Registered Strategies"):
-            for s in strategies:
-                st.text(f"  - {s}")
-
-
-def _render_chart_tab(candle_chart: CandlestickChart, status: dict | None):
-    """Render trading chart tab."""
-    st.header("📈 Trading Chart")
-    
-    # Chart settings
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        timeframe = st.selectbox("Timeframe", ["1h", "15m", "4h", "1d"], index=0)
-    with col2:
-        limit = st.selectbox("Candles", [50, 100, 200], index=1)
-    with col3:
-        show_indicators = st.multiselect(
-            "Indicators",
-            ["MA", "RSI", "Volume"],
-            default=["MA", "RSI", "Volume"]
-        )
-    
-    # Fetch candle data
-    candles_data = fetch_api("/api/candles", params={
-        "timeframe": timeframe,
-        "limit": limit,
-    })
-    
-    # Fetch grid data for overlay
-    grid_data = fetch_api("/api/grid")
-    grid_levels = grid_data.get("levels", []) if grid_data else None
-    
-    current_price = status.get("current_price") if status else None
-    
-    if candles_data and candles_data.get("candles"):
-        candle_chart.render(
-            candles=candles_data["candles"],
-            grid_levels=grid_levels,
-            current_price=current_price,
-            show_ma="MA" in show_indicators,
-            show_rsi="RSI" in show_indicators,
-            show_volume="Volume" in show_indicators,
-            title=f"{candles_data.get('symbol', 'BTC/USDT')} - {timeframe}",
-        )
-    else:
-        st.warning("Unable to fetch candle data. The API might be unavailable.")
-        st.info("Make sure the trading bot API is running and accessible.")
-
-
-def _render_grid_tab(grid_viz: GridVisualization, status: dict | None):
-    """Render grid trading tab."""
-    st.header("🔲 Grid Trading")
-    
-    grid_data = fetch_api("/api/grid")
-    current_price = status.get("current_price") if status else None
-    
-    if grid_data:
-        # Enhanced Grid Visualization
-        _render_enhanced_grid(grid_data, current_price)
-        
-        st.divider()
-        
-        # Original visualization
-        grid_viz.render(grid_data, current_price=current_price)
-        
-        st.divider()
-        
-        # Compact view
-        st.subheader("📋 Grid Levels Detail")
-        grid_viz.render_compact(grid_data, current_price=current_price)
-    else:
-        st.info("No grid data available. The bot may not be running.")
-
-
-def _render_enhanced_grid(grid_data: dict, current_price: float | None):
-    """Render enhanced horizontal grid visualization."""
-    import plotly.graph_objects as go
-    
-    levels = grid_data.get("levels", [])
-    if not levels:
-        return
-    
-    st.subheader("📊 Grid Levels Diagram")
-    
-    # Sort levels by price
-    sorted_levels = sorted(levels, key=lambda x: x["price"])
-    
-    # Create horizontal bar chart
-    fig = go.Figure()
-    
-    prices = [l["price"] for l in sorted_levels]
-    colors = []
-    labels = []
-    
-    for level in sorted_levels:
-        if level["filled"]:
-            colors.append("#9E9E9E")  # Gray for filled
-            labels.append(f"✅ {level['side'].upper()}")
-        elif level["side"] == "buy":
-            colors.append("#26A69A")  # Green for buy
-            labels.append(f"🟢 BUY")
+    with col_bal:
+        if balance > 0:
+            cls = "bal-pos"
+        elif balance < 0:
+            cls = "bal-neg"
         else:
-            colors.append("#EF5350")  # Red for sell
-            labels.append(f"🔴 SELL")
-    
-    # Add bars
-    fig.add_trace(go.Bar(
-        y=[f"${p:,.0f}" for p in prices],
-        x=[1] * len(prices),
-        orientation='h',
-        marker_color=colors,
-        text=labels,
-        textposition='inside',
-        hovertemplate=(
-            "<b>%{y}</b><br>"
-            "Status: %{text}<br>"
-            "<extra></extra>"
-        ),
-    ))
-    
-    # Add current price line
-    if current_price:
-        fig.add_vline(
-            x=0.5,
-            line_dash="solid",
-            line_color="#FFEB3B",
-            line_width=3,
-            annotation_text=f"Current: ${current_price:,.2f}",
+            cls = "bal-zero"
+
+        sign = "+" if balance > 0 else ""
+        st.markdown(
+            f'<div style="padding:1rem 0">'
+            f'<div class="bal-label">Total P&L</div>'
+            f'<div class="bal-value {cls}">{sign}${balance:,.2f}</div>'
+            f"</div>",
+            unsafe_allow_html=True,
         )
-        # Find where current price would be
-        for i, price in enumerate(prices):
-            if price > current_price:
-                fig.add_annotation(
-                    x=1.1,
-                    y=i - 0.5,
-                    text=f"👈 Current: ${current_price:,.2f}",
-                    showarrow=False,
-                    font=dict(color="#FFEB3B", size=12),
-                )
-                break
-    
-    fig.update_layout(
-        template="plotly_dark",
-        height=max(300, len(levels) * 40),
-        margin=dict(l=100, r=50, t=30, b=30),
-        xaxis=dict(visible=False, range=[0, 1.5]),
-        yaxis=dict(title="Price Levels"),
-        showlegend=False,
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
 
-
-def _render_pnl_tab(pnl_chart: PnLChart):
-    """Render PnL analysis tab."""
-    st.header("💰 PnL Analysis")
-    
-    # PnL Summary
-    pnl_summary = fetch_api("/api/trades/pnl")
-    if pnl_summary:
-        pnl_chart.render_summary(pnl_summary)
-        
-        # Win/Loss Pie Chart
-        _render_win_loss_pie(pnl_summary)
-    
-    st.divider()
-    
-    # PnL History Charts
-    pnl_history = fetch_api("/api/trades/history")
-    if pnl_history and pnl_history.get("history"):
-        col1, col2 = st.columns(2)
-        with col1:
-            pnl_chart.render_cumulative(pnl_history["history"])
-        with col2:
-            pnl_chart.render_daily(pnl_history["history"])
-    else:
-        st.info("No PnL history available yet. Start trading to see charts!")
-
-
-def _render_win_loss_pie(pnl_summary: dict):
-    """Render win/loss ratio pie chart."""
-    import plotly.graph_objects as go
-    
-    st.subheader("📊 Win/Loss Ratio")
-    
-    wins = pnl_summary.get("winning_trades", 0)
-    losses = pnl_summary.get("losing_trades", 0)
-    
-    if wins == 0 and losses == 0:
-        st.info("No completed trades yet")
-        return
-    
-    fig = go.Figure(data=[go.Pie(
-        labels=["Wins", "Losses"],
-        values=[wins, losses],
-        hole=0.4,
-        marker_colors=["#26A69A", "#EF5350"],
-        textinfo="label+percent+value",
-        hovertemplate="<b>%{label}</b><br>Count: %{value}<br>%{percent}<extra></extra>",
-    )])
-    
-    fig.update_layout(
-        template="plotly_dark",
-        height=300,
-        margin=dict(l=50, r=50, t=30, b=30),
-        showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5),
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-
-
-def _render_trades_tab(trade_table: TradeTable):
-    """Render trade history tab."""
-    st.header("📋 Trade History")
-    
-    # Filters
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        symbol_filter = st.selectbox("Symbol", ["All", "BTC/USDT", "ETH/USDT"])
-    with col2:
-        side_filter = st.selectbox("Side", ["All", "buy", "sell"])
-    with col3:
-        per_page = st.selectbox("Per Page", [10, 25, 50, 100], index=2)
-    
-    # Build query params
-    params = {"per_page": per_page}
-    if symbol_filter != "All":
-        params["symbol"] = symbol_filter
-    if side_filter != "All":
-        params["side"] = side_filter
-    
-    # Fetch trades
-    trades_data = fetch_api("/api/trades", params=params)
-    
-    if trades_data:
-        trade_table.render_summary(trades_data.get("trades", []))
-        st.divider()
-        trade_table.render(
-            trades_data.get("trades", []),
-            page=trades_data.get("page", 1),
-            total=trades_data.get("total", 0),
-            per_page=trades_data.get("per_page", 50),
-        )
-    else:
-        st.info("No trades recorded yet.")
-
-
-def _render_orders_tab(order_book: OrderBook):
-    """Render orders tab."""
-    st.header("📑 Open Orders")
-    
-    # Fetch orders
-    orders_data = fetch_api("/api/orders")
-    
-    if orders_data and orders_data.get("orders"):
-        orders = orders_data["orders"]
-        
-        # Cancel handler
-        def handle_cancel(order_id: str):
-            result = fetch_api(f"/api/orders/{order_id}", method="DELETE")
-            if result and result.get("success"):
-                st.toast(f"✅ Order {order_id} cancelled", icon="❌")
-                st.rerun()
-            else:
-                st.toast(f"❌ Failed to cancel order", icon="⚠️")
-        
-        # Check session state for cancel requests
-        for key in list(st.session_state.keys()):
-            if key.startswith("cancel_order_") and st.session_state[key]:
-                order_id = key.replace("cancel_order_", "")
-                handle_cancel(order_id)
-                st.session_state[key] = False
-        
-        # Grouped view
-        order_book.render_grouped(orders)
-        
-        st.divider()
-        
-        # Detailed view
-        order_book.render(orders, on_cancel=handle_cancel)
-    else:
-        st.info("No open orders")
-
-
-def _render_backtest_tab():
-    """Render backtest tab with equity curve, metrics, and buy-and-hold comparison."""
-    st.header("🧪 Backtest")
-
-    # Import here to avoid circular imports / heavy deps at startup
-    from tests.conftest import make_ohlcv_df
-    from shared.backtest.engine import BacktestEngine, BacktestResult
-    from shared.backtest.benchmark import StrategyBenchmark
-    from shared.backtest.charts import BacktestCharts
-    from binance_bot.strategies import GridStrategy, GridConfig
-
-    # Controls
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        bt_symbol = st.text_input("Symbol", value="BTC/USDT", key="bt_symbol")
-    with col2:
-        bt_start = st.date_input("Start Date", value=pd.Timestamp("2025-01-01"), key="bt_start")
-    with col3:
-        bt_end = st.date_input("End Date", value=pd.Timestamp("2025-04-10"), key="bt_end")
-
-    col4, col5, col6 = st.columns(3)
-    with col4:
-        bt_levels = st.slider("Grid Levels", 3, 30, 10, key="bt_levels")
-    with col5:
-        bt_spacing = st.slider("Grid Spacing %", 0.5, 5.0, 1.5, step=0.1, key="bt_spacing")
-    with col6:
-        bt_amount = st.number_input("Amount/Level", value=0.001, format="%.4f", key="bt_amount")
-
-    if st.button("Run Backtest", type="primary", key="bt_run"):
-        with st.spinner("Running backtest..."):
-            # Generate synthetic data for demo (in production, fetch from exchange)
-            n_candles = max(30, (pd.Timestamp(bt_end) - pd.Timestamp(bt_start)).days)
-            data = make_ohlcv_df(n=n_candles, base_price=50000.0, trend=0.001, seed=42)
-
-            config = GridConfig(
-                grid_levels=bt_levels,
-                grid_spacing_pct=bt_spacing,
-                amount_per_level=bt_amount,
+        if total_pnl != 0 or unrealized != 0:
+            rc = "#22c55e" if total_pnl >= 0 else "#ef4444"
+            uc = "#22c55e" if unrealized >= 0 else "#ef4444"
+            st.markdown(
+                f'<div class="bal-sub">'
+                f'<span style="color:#555">Realized</span> '
+                f'<span style="color:{rc}">${total_pnl:+,.2f}</span>'
+                f"&nbsp;&nbsp;"
+                f'<span style="color:#555">Unrealized</span> '
+                f'<span style="color:{uc}">${unrealized:+,.2f}</span>'
+                f"</div>",
+                unsafe_allow_html=True,
             )
-            strategy = GridStrategy(symbol=bt_symbol, config=config)
 
-            engine = BacktestEngine(
-                symbol=bt_symbol,
-                timeframe="1d",
-                initial_balance=10000.0,
-            )
-            result = engine.run(strategy=strategy, data=data, params={"name": "Dashboard Run"})
+    with col_chart:
+        if history:
+            _equity_chart(history)
+        else:
+            st.markdown('<div class="muted">No trading history</div>', unsafe_allow_html=True)
 
-            # Store result in session state
-            st.session_state["bt_result"] = result
-            st.session_state["bt_data"] = data
-
-    # Display results if available
-    result = st.session_state.get("bt_result")
-    bt_data = st.session_state.get("bt_data")
-    if result is None:
-        st.info("Configure parameters and click 'Run Backtest' to start.")
-        return
-
-    # Metrics row
+    # ── Key Metrics Row ──
     m1, m2, m3, m4 = st.columns(4)
     with m1:
-        st.metric("Total Return", f"{result.total_return:+.2f}%")
+        st.metric("Win Rate", f"{win_rate:.1f}%")
     with m2:
-        st.metric("Win Rate", f"{result.win_rate:.1f}%")
+        pf = f"{profit_factor:.2f}" if profit_factor < 1e6 else "---"
+        st.metric("Profit Factor", pf)
     with m3:
-        st.metric("Sharpe Ratio", f"{result.sharpe_ratio:.2f}")
+        st.metric("Sharpe Ratio", f"{sharpe:.2f}")
     with m4:
-        st.metric("Max Drawdown", f"{result.max_drawdown:.2f}%")
+        st.metric("Max Drawdown", f"${max_dd:,.2f}")
 
-    m5, m6, m7, m8 = st.columns(4)
-    with m5:
-        st.metric("Total Trades", result.total_trades)
-    with m6:
-        st.metric("Profit Factor", f"{result.profit_factor:.2f}")
-    with m7:
-        st.metric("Avg Win", f"${result.avg_win:,.2f}")
-    with m8:
-        st.metric("Avg Loss", f"${result.avg_loss:,.2f}")
+    # ── Active Position ──
+    st.markdown('<div class="sect">ACTIVE POSITION</div>', unsafe_allow_html=True)
+    _render_position(positions)
 
-    st.divider()
+    # ── Current Strategy ──
+    st.markdown('<div class="sect">STRATEGY</div>', unsafe_allow_html=True)
+    _render_strategy(status)
 
-    # Charts
-    charts = BacktestCharts()
 
-    col_eq, col_dd = st.columns(2)
-    with col_eq:
-        st.plotly_chart(charts.equity_curve(result), use_container_width=True)
-    with col_dd:
-        st.plotly_chart(charts.drawdown_chart(result), use_container_width=True)
+def _compute_profit_factor(history):
+    if not history:
+        return 0.0
+    gross_profit = sum(h.get("pnl", 0) for h in history if (h.get("pnl", 0) or 0) > 0)
+    gross_loss = abs(sum(h.get("pnl", 0) for h in history if (h.get("pnl", 0) or 0) < 0))
+    if gross_loss > 0:
+        return gross_profit / gross_loss
+    return gross_profit if gross_profit > 0 else 0.0
 
-    st.plotly_chart(charts.monthly_returns_heatmap(result), use_container_width=True)
-    st.plotly_chart(charts.trade_distribution(result), use_container_width=True)
 
-    # Buy & Hold comparison
-    st.divider()
-    st.subheader("vs Buy & Hold")
-    if bt_data is not None:
-        bench = StrategyBenchmark()
-        comp = bench.vs_buy_and_hold(result, bt_data)
+def _compute_sharpe(history):
+    if not history or len(history) < 2:
+        return 0.0
+    pnls = [h.get("pnl", 0) or 0 for h in history]
+    try:
+        mean = statistics.mean(pnls)
+        std = statistics.stdev(pnls)
+        return mean / std if std > 0 else 0.0
+    except statistics.StatisticsError:
+        return 0.0
+
+
+def _compute_max_drawdown(history):
+    if not history:
+        return 0.0
+    peak = 0.0
+    max_dd = 0.0
+    for h in history:
+        cum = h.get("cumulative_pnl", 0) or 0
+        if cum > peak:
+            peak = cum
+        dd = peak - cum
+        if dd > max_dd:
+            max_dd = dd
+    return max_dd
+
+
+def _equity_chart(history):
+    timestamps = [h.get("timestamp", "") for h in history]
+    values = [h.get("cumulative_pnl", 0) or 0 for h in history]
+
+    if not values:
+        return
+
+    final = values[-1]
+    line_color = "#22c55e" if final >= 0 else "#ef4444"
+    fill_color = "rgba(34,197,94,0.08)" if final >= 0 else "rgba(239,68,68,0.08)"
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=timestamps,
+            y=values,
+            mode="lines",
+            line=dict(color=line_color, width=1.5),
+            fill="tozeroy",
+            fillcolor=fill_color,
+            hovertemplate="$%{y:,.2f}<extra></extra>",
+        )
+    )
+    fig.add_hline(y=0, line_dash="dot", line_color="#333", line_width=0.5)
+    fig.update_layout(
+        **_PLOTLY_BASE,
+        height=200,
+        margin=dict(l=0, r=0, t=10, b=0),
+        xaxis=dict(showgrid=False, tickfont=dict(size=9, color="#444")),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor="#1a1a1a",
+            tickfont=dict(size=9, color="#444"),
+            tickprefix="$",
+            zeroline=False,
+        ),
+        hovermode="x unified",
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+
+def _render_position(positions):
+    if not positions or not positions.get("positions"):
+        st.markdown(
+            '<div style="color:#444;font-size:0.8rem;padding:0.3rem 0">'
+            "No active position</div>",
+            unsafe_allow_html=True,
+        )
+        return
+
+    for pos in positions["positions"]:
+        side = pos.get("side", "flat")
+        amount = pos.get("amount", 0) or 0
+        entry = pos.get("entry_price", 0) or 0
+        upnl = pos.get("unrealized_pnl", 0) or 0
+
+        if amount == 0:
+            st.markdown(
+                '<div style="color:#444;font-size:0.8rem;padding:0.3rem 0">'
+                "No active position</div>",
+                unsafe_allow_html=True,
+            )
+            continue
+
+        side_cls = {"long": "pos-long", "short": "pos-short"}.get(side, "pos-flat")
+        pnl_cls = "bal-pos" if upnl >= 0 else "bal-neg"
+
+        st.markdown(
+            f'<div class="pos-card">'
+            f'<div class="pos-hdr">'
+            f'<span class="pos-side {side_cls}">{side.upper()}</span>'
+            f'<span class="pos-pnl {pnl_cls}">${upnl:+,.2f}</span>'
+            f"</div>"
+            f'<div class="pos-details">'
+            f"<span>Size {amount:.6f}</span>"
+            f"<span>Entry ${entry:,.2f}</span>"
+            f"</div></div>",
+            unsafe_allow_html=True,
+        )
+
+
+def _render_strategy(status):
+    engine = status.get("strategy_engine") if status else None
+    if not engine:
+        engine = _api("/api/bot/strategy-engine")
+
+    config = _api("/api/bot/config")
+
+    if engine:
+        name = engine.get("active_strategy", "---")
+        regime = engine.get("current_regime", "---")
+        confidence = engine.get("confidence", None)
+        parts = [
+            f'<span style="color:#d0d0d0;font-weight:500">{name}</span>',
+            f"Regime: {regime}",
+        ]
+        if confidence is not None:
+            parts.append(f"Confidence: {confidence:.0%}")
+        st.markdown(
+            '<div style="font-size:0.8rem;color:#808080;padding:0.3rem 0">'
+            + "&nbsp;&nbsp;&middot;&nbsp;&nbsp;".join(parts)
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+    elif config:
+        ai = "AI Grid" if config.get("ai_enabled") else "Grid"
+        levels = config.get("grid_levels", "?")
+        spacing = config.get("grid_spacing_pct", "?")
+        st.markdown(
+            f'<div style="font-size:0.8rem;color:#808080;padding:0.3rem 0">'
+            f'<span style="color:#d0d0d0;font-weight:500">{ai}</span>'
+            f"&nbsp;&nbsp;&middot;&nbsp;&nbsp;{levels} levels"
+            f"&nbsp;&nbsp;&middot;&nbsp;&nbsp;{spacing}% spacing"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<div style="color:#444;font-size:0.8rem;padding:0.3rem 0">'
+            "Not available</div>",
+            unsafe_allow_html=True,
+        )
+
+
+# ── Tab 2: Activity Log ─────────────────────────────────────────────────────
+
+
+def _tab_activity(status):
+    filter_type = st.selectbox(
+        "Filter",
+        ["ALL", "TRADE", "INFO", "ERROR"],
+        label_visibility="collapsed",
+    )
+
+    entries = []
+
+    # Trade executions
+    trades = _api("/api/trades", params={"per_page": 100})
+    if trades and trades.get("trades"):
+        for t in trades["trades"]:
+            ts_ms = t.get("timestamp", 0)
+            ts = (
+                datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
+                if ts_ms
+                else None
+            )
+            side = t.get("side", "?")
+            price = t.get("price", 0) or 0
+            amount = t.get("amount", 0) or 0
+            symbol = t.get("symbol", "")
+            cost = t.get("cost", 0) or (price * amount)
+
+            side_color = "#22c55e" if side == "buy" else "#ef4444"
+            msg = (
+                f'<span style="color:{side_color}">{side.upper()}</span> '
+                f"{amount:.6f} {symbol} @ ${price:,.2f} = ${cost:,.2f}"
+            )
+            entries.append({"time": ts, "type": "TRADE", "msg": msg})
+
+    # Bot status
+    if status:
+        errors = status.get("errors", 0) or 0
+        if errors > 0:
+            entries.append(
+                {
+                    "time": datetime.now(timezone.utc),
+                    "type": "ERROR",
+                    "msg": f"{errors} error(s) recorded",
+                }
+            )
+
+        state = status.get("state", "unknown")
+        uptime = status.get("uptime_seconds", 0) or 0
+        h = int(uptime // 3600)
+        m = int((uptime % 3600) // 60)
+        ticks = status.get("ticks", 0)
+        entries.append(
+            {
+                "time": datetime.now(timezone.utc),
+                "type": "INFO",
+                "msg": f"State: {state.upper()} | Uptime: {h}h {m}m | Ticks: {ticks}",
+            }
+        )
+
+    # Filter
+    if filter_type != "ALL":
+        entries = [e for e in entries if e["type"] == filter_type]
+
+    # Sort newest first
+    entries.sort(
+        key=lambda e: e["time"] or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+
+    if not entries:
+        st.markdown('<div class="muted">No activity</div>', unsafe_allow_html=True)
+        return
+
+    html = []
+    for e in entries[:200]:
+        time_str = e["time"].strftime("%H:%M:%S") if e["time"] else "---"
+        tag = e["type"].lower()
+        tag_cls = f"tag-{tag}" if tag in ("trade", "signal", "error", "info", "warn") else "tag-info"
+
+        html.append(
+            f'<div class="log-entry">'
+            f'<span class="log-time">{time_str}</span>'
+            f'<span class="log-tag {tag_cls}">{e["type"]}</span>'
+            f'<span class="log-msg">{e["msg"]}</span>'
+            f"</div>"
+        )
+
+    st.markdown("".join(html), unsafe_allow_html=True)
+
+
+# ── Tab 3: Grid View ────────────────────────────────────────────────────────
+
+
+def _tab_grid(status):
+    grid_data = _api("/api/grid")
+    current_price = status.get("current_price") if status else None
+
+    if not grid_data or not grid_data.get("levels"):
+        st.markdown('<div class="muted">No grid data</div>', unsafe_allow_html=True)
+        return
+
+    levels = grid_data["levels"]
+
+    # Summary
+    total = len(levels)
+    filled = sum(1 for lv in levels if lv.get("filled"))
+    buys = sum(1 for lv in levels if lv.get("side") == "buy" and not lv.get("filled"))
+    sells = sum(1 for lv in levels if lv.get("side") == "sell" and not lv.get("filled"))
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric("Total Levels", total)
+    with c2:
+        st.metric("Filled", filled)
+    with c3:
+        st.metric("Buy Orders", buys)
+    with c4:
+        st.metric("Sell Orders", sells)
+
+    # Chart
+    _grid_chart(levels, current_price)
+
+    # Text ladder
+    st.markdown('<div class="sect">LEVEL DETAIL</div>', unsafe_allow_html=True)
+
+    sorted_levels = sorted(levels, key=lambda x: x["price"], reverse=True)
+    html = ['<div style="border:1px solid #1e1e1e;background:#0e0e0e">']
+    price_inserted = False
+
+    for lv in sorted_levels:
+        price = lv["price"]
+
+        # Current price marker
+        if current_price and not price_inserted and price < current_price:
+            html.append(
+                f'<div class="grid-current">&#9656; CURRENT ${current_price:,.2f}</div>'
+            )
+            price_inserted = True
+
+        side = lv.get("side", "?")
+        is_filled = lv.get("filled", False)
+        side_cls = "g-buy" if side == "buy" else "g-sell"
+        filled_cls = "grid-filled" if is_filled else ""
+        status_text = "FILLED" if is_filled else "ACTIVE"
+
+        tpsl = ""
+        tp = lv.get("take_profit")
+        sl = lv.get("stop_loss")
+        if tp:
+            tpsl += f"TP ${tp:,.0f} "
+        if sl:
+            tpsl += f"SL ${sl:,.0f}"
+
+        html.append(
+            f'<div class="grid-row">'
+            f'<span class="grid-price {filled_cls}">${price:,.2f}</span>'
+            f'<span class="grid-side {side_cls}">{side}</span>'
+            f'<span class="grid-status">{status_text}</span>'
+            f'<span class="grid-tpsl">{tpsl}</span>'
+            f"</div>"
+        )
+
+    if current_price and not price_inserted:
+        html.append(
+            f'<div class="grid-current">&#9656; CURRENT ${current_price:,.2f}</div>'
+        )
+
+    html.append("</div>")
+    st.markdown("".join(html), unsafe_allow_html=True)
+
+
+def _grid_chart(levels, current_price):
+    sorted_levels = sorted(levels, key=lambda x: x["price"])
+
+    fig = go.Figure()
+
+    # Invisible trace to establish axes
+    all_prices = [lv["price"] for lv in sorted_levels]
+    if current_price:
+        all_prices.append(current_price)
+
+    fig.add_trace(
+        go.Scatter(
+            x=[0.5] * len(all_prices),
+            y=all_prices,
+            mode="markers",
+            marker=dict(size=0, opacity=0),
+            showlegend=False,
+            hoverinfo="skip",
+        )
+    )
+
+    # Level lines
+    for lv in sorted_levels:
+        price = lv["price"]
+        filled = lv.get("filled", False)
+        side = lv.get("side", "buy")
+
+        if filled:
+            color, width, dash = "#333", 1, "dot"
+        elif side == "buy":
+            color, width, dash = "#22c55e", 1.5, "solid"
+        else:
+            color, width, dash = "#ef4444", 1.5, "solid"
+
+        fig.add_shape(
+            type="line",
+            x0=0,
+            x1=1,
+            y0=price,
+            y1=price,
+            line=dict(color=color, width=width, dash=dash),
+        )
+
+    # Current price
+    if current_price:
+        fig.add_shape(
+            type="line",
+            x0=0,
+            x1=1,
+            y0=current_price,
+            y1=current_price,
+            line=dict(color="#eab308", width=2),
+        )
+        fig.add_annotation(
+            x=1.05,
+            y=current_price,
+            text=f"${current_price:,.2f}",
+            showarrow=False,
+            font=dict(size=10, color="#eab308"),
+        )
+
+    y_min = min(all_prices) * 0.999
+    y_max = max(all_prices) * 1.001
+
+    fig.update_layout(
+        **_PLOTLY_BASE,
+        height=max(200, len(sorted_levels) * 25),
+        margin=dict(l=0, r=80, t=10, b=10),
+        xaxis=dict(visible=False, range=[0, 1.2]),
+        yaxis=dict(
+            range=[y_min, y_max],
+            showgrid=False,
+            tickprefix="$",
+            tickfont=dict(size=9, color="#444"),
+        ),
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+
+# ── Tab 4: Settings ─────────────────────────────────────────────────────────
+
+
+def _tab_settings(status):
+    # Bot control
+    st.markdown('<div class="sect">BOT CONTROL</div>', unsafe_allow_html=True)
+
+    if status:
+        state = status.get("state", "unknown")
+        uptime = status.get("uptime_seconds", 0) or 0
+        h = int(uptime // 3600)
+        m = int((uptime % 3600) // 60)
+
         c1, c2, c3 = st.columns(3)
         with c1:
-            st.metric("Strategy Return", f"{comp['strategy']['total_return']:+.2f}%")
+            st.metric("State", state.upper())
         with c2:
-            st.metric("Buy & Hold Return", f"{comp['buy_and_hold']['total_return']:+.2f}%")
+            st.metric("Uptime", f"{h}h {m}m")
         with c3:
-            st.metric("Outperformance", f"{comp['outperformance']:+.2f}%")
+            st.metric("Errors", status.get("errors", 0))
+    else:
+        st.warning("API offline")
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        if st.button("PAUSE", use_container_width=True):
+            r = _api("/api/bot/pause", method="POST")
+            st.toast("Bot paused" if r and r.get("success") else "Failed")
+    with c2:
+        if st.button("RESUME", use_container_width=True, type="primary"):
+            r = _api("/api/bot/resume", method="POST")
+            st.toast("Bot resumed" if r and r.get("success") else "Failed")
+    with c3:
+        if st.button("STOP", use_container_width=True):
+            r = _api("/api/bot/stop", method="POST")
+            st.toast("Bot stopped" if r and r.get("success") else "Failed")
+
+    # Strategy config
+    st.markdown('<div class="sect">STRATEGY</div>', unsafe_allow_html=True)
+
+    config = _api("/api/bot/config")
+    if config:
+        rows = [
+            ("Symbol", config.get("symbol", "---")),
+            ("Grid Levels", config.get("grid_levels", "---")),
+            ("Grid Spacing", f'{config.get("grid_spacing_pct", "---")}%'),
+            ("Amount / Level", config.get("amount_per_level", "---")),
+            ("AI Enabled", "Yes" if config.get("ai_enabled") else "No"),
+        ]
+        html = '<div class="cfg-group">'
+        for k, v in rows:
+            html += f'<div class="cfg-row"><span class="cfg-key">{k}</span><span class="cfg-val">{v}</span></div>'
+        html += "</div>"
+        st.markdown(html, unsafe_allow_html=True)
+    else:
+        st.markdown(
+            '<div style="color:#444;font-size:0.8rem">Not available</div>',
+            unsafe_allow_html=True,
+        )
+
+    # Risk parameters
+    st.markdown('<div class="sect">RISK PARAMETERS</div>', unsafe_allow_html=True)
+
+    if config:
+        risk_rows = [("Risk Tolerance", config.get("risk_tolerance", "---"))]
+        html = '<div class="cfg-group">'
+        for k, v in risk_rows:
+            html += f'<div class="cfg-row"><span class="cfg-key">{k}</span><span class="cfg-val">{v}</span></div>'
+        html += "</div>"
+        st.markdown(html, unsafe_allow_html=True)
+
+    # Dashboard settings
+    st.markdown('<div class="sect">DASHBOARD</div>', unsafe_allow_html=True)
+
+    st.session_state.auto_refresh = st.checkbox(
+        "Auto-refresh", value=st.session_state.auto_refresh
+    )
+    st.session_state.refresh_sec = st.slider(
+        "Interval (sec)", 5, 60, st.session_state.refresh_sec
+    )
+
+    st.markdown(
+        f'<div style="color:#333;font-size:0.7rem;padding:2rem 0 0 0">'
+        f"API: {API_URL}</div>",
+        unsafe_allow_html=True,
+    )
 
 
 if __name__ == "__main__":
