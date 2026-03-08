@@ -33,10 +33,8 @@
 
 5. **Code review is done by a SEPARATE ACP agent** (never the same agent that wrote the code). The reviewer reads the diff and leaves inline comments or approves.
 
-6. **After review approval**, merge to main:
+6. **After review approval**, merge via GitHub:
    ```bash
-   cd ~/projects/CentricVoid/trading-bots
-   git merge <branch-name>
    gh pr merge <PR-number> --merge
    ```
 
@@ -131,11 +129,22 @@ trading-bots/
 │   ├── Dockerfile
 │   └── .env                   # API keys (gitignored)
 │
+├── jesse-bot/                 # Jesse-based Grid Trading Bot (PARALLEL, Sprint M1+)
+│   ├── strategies/
+│   │   └── AIGridStrategy/    # Grid strategy as Jesse plugin
+│   │       ├── __init__.py    # Jesse Strategy subclass
+│   │       └── grid_logic.py  # Pure Python grid logic (testable without Redis)
+│   ├── tests/                 # 28 unit tests for grid logic
+│   ├── docker/                # docker-compose.yml (jesse + postgres + redis)
+│   ├── config.py              # Jesse exchange/optimization config
+│   ├── routes.py              # Trading routes (symbol + timeframe + strategy)
+│   └── .env                   # Jesse config (gitignored)
+│
 ├── polymarket-bot/            # Prediction Markets Bot (EMPTY SCAFFOLD)
 │   ├── src/polymarket_bot/    # Only __init__.py files
 │   └── Dockerfile
 │
-├── tests/                     # 255 test functions across 19 files
+├── tests/                     # 255 test functions across 19 files (binance-bot)
 │   ├── unit/                  # grid, indicators, database, paper_trades, alerts, etc.
 │   ├── integration/           # trade flow, backtest, optimization, bidirectional, news
 │   ├── test_factors/          # factor calculator + strategy tests
@@ -267,26 +276,31 @@ trading-bots/
 | 19 | Advanced Backtesting | ✅ Done | recent |
 | 20 | Bidirectional Grid Trading | ✅ Done | recent |
 
-### Planned (from project-plan.md)
+### Planned
 
 | Sprint | What | Priority |
 |--------|------|----------|
-| 17 | NautilusTrader Study & Setup | HIGH (decision pending) |
-| 18-20 | NautilusTrader Grid + AI + Live | HIGH (if migrating) |
-| 21 | Polymarket Bot | MEDIUM |
-| 22 | Stocks Bot (Interactive Brokers) | FUTURE |
-| 23 | Rust Core Performance | FUTURE |
-| — | Factor/Strategy Framework from QuantMuse | FUTURE |
-| — | API Gateway & Caching (Redis) | FUTURE |
+| M2-M7 | Jesse bot development (see Jesse Bot Sprint Plan above) | HIGH |
+| — | Polymarket Bot | MEDIUM |
+| — | Stocks Bot (Interactive Brokers) | FUTURE |
 
-### Key Decision Pending: NautilusTrader Migration
+### Decision: Jesse Framework (Decided 2026-03-07)
 
-The project plan has a migration path to NautilusTrader (Sprints 17-23) as the production platform. NautilusTrader offers:
-- Rust core (<1ms latency)
-- Ready-made adapters: Binance, Polymarket, Interactive Brokers, Bybit, OKX
-- Professional backtesting, risk management, order management
+NautilusTrader was considered but **Jesse was chosen** as the trading framework for a parallel bot (`jesse-bot/`). Rationale: see `docs/analysis/jesse-comparison.md` and `docs/analysis/migration-plan.md`.
 
-However, Sprints 18-20 were built on the current custom architecture instead. **The team needs to decide: migrate to NautilusTrader or continue building on the current stack.**
+**Approach:** Build jesse-bot in parallel with binance-bot. Compare results. Best performer stays.
+
+### Jesse Bot Sprint Plan
+
+| Sprint | What | Status |
+|--------|------|--------|
+| M1 | Jesse Foundation (install, basic strategy, backtest) | ✅ Done (2026-03-08) |
+| M2 | Grid Logic Refinement (bidirectional, TP/SL, trailing, multi-TF) | Planned |
+| M3 | AI Integration (LLM agent as strategy mixin) | Planned |
+| M4 | Sentiment + Factors Integration | Planned |
+| M5 | Alerts + Dashboard Adaptation | Planned |
+| M6 | Live Trading Setup | Planned |
+| M7 | Cleanup + Optimization | Planned |
 
 ---
 
@@ -409,13 +423,30 @@ docker compose -f docker-compose.prod.yml up -d
 docker compose -f docker-compose.monitoring.yml up -d
 ```
 
+### Jesse Bot (Docker)
+
+```bash
+cd jesse-bot/docker
+
+# Start jesse + postgres + redis
+sg docker -c "docker compose up -d"
+
+# Dashboard
+open http://localhost:9000  # password: test
+
+# Run tests (from host, no Redis needed)
+cd jesse-bot
+../.venv/bin/python -m pytest tests/ -v
+```
+
 ### URLs (when running)
 
 | Service | Local | Server |
 |---------|-------|--------|
-| Dashboard | http://localhost:8501 | http://10.48.14.85:8501 |
-| API | http://localhost:8000 | http://10.48.14.85:8000 |
-| API Docs | http://localhost:8000/docs | http://10.48.14.85:8000/docs |
+| binance-bot Dashboard | http://localhost:8501 | http://10.48.14.85:8501 |
+| binance-bot API | http://localhost:8000 | http://10.48.14.85:8000 |
+| binance-bot API Docs | http://localhost:8000/docs | http://10.48.14.85:8000/docs |
+| **jesse-bot Dashboard** | **http://localhost:9000** | — |
 | Prometheus | http://localhost:9090 | — |
 | Grafana | http://localhost:3000 | — |
 
@@ -494,10 +525,9 @@ Python 3.12 in CI. Dependencies from `binance-bot/requirements.txt`.
 
 ### P4 — Strategic
 
-19. **Decide on NautilusTrader** — migrate (rewrite on professional platform) or continue custom?
-20. **Move to mainnet** — small capital ($50-100), real money testing
-21. **Add CHANGELOG.md** — track changes between versions
-22. **Add Alembic** — database migrations for schema changes
+19. **Move to mainnet** — small capital ($50-100), real money testing
+20. **Add CHANGELOG.md** — track changes between versions
+21. **Add Alembic** — database migrations for schema changes
 
 ---
 
@@ -548,9 +578,16 @@ shared/dashboard/ ─► shared/api (HTTP calls)
 
 ## Stats
 
+### binance-bot
 - **Total Python LOC:** ~14,270
 - **Test functions:** 255
 - **Test files:** 19
-- **Completed sprints:** 18 (of planned 23+)
+- **Completed sprints:** 23
 - **Bot uptime:** 24/7 on testnet since 2026-03-05
 - **Live trading:** Not yet (still on testnet)
+
+### jesse-bot
+- **Test functions:** 28
+- **Test files:** 1
+- **Completed sprints:** M1
+- **Framework:** Jesse 1.13.7 (Docker: jesse + postgres + redis)
