@@ -442,16 +442,16 @@ class TradingBot:
                 cmd = read_command()
                 if cmd == "pause":
                     logger.info("Received PAUSE command from dashboard")
-                    self.state = "paused"
+                    self.state = BotState.PAUSED
                 elif cmd == "resume":
                     logger.info("Received RESUME command from dashboard")
-                    self.state = "trading"
+                    self.state = BotState.TRADING
                 elif cmd == "stop":
                     logger.info("Received STOP command from dashboard")
                     self.running = False
                     break
                 
-                if self.state == "paused":
+                if self.state == BotState.PAUSED:
                     self._write_shared_state(current_price=None)
                     await asyncio.sleep(tick_interval)
                     continue
