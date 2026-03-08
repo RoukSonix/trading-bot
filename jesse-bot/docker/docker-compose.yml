@@ -1,7 +1,7 @@
 version: '3.5'
 
 services:
-  ### Jesse Trading Bot ###############################################
+  ### Jesse Trading Bot (Backtest/Dashboard) ################################
   jesse:
     image: salehmir/jesse:latest
     depends_on:
@@ -20,6 +20,39 @@ services:
       - ../:/home
     container_name: jesse-bot
     command: bash -c "jesse install-live --no-strict && jesse run"
+
+  ### Jesse Live Trading (Testnet Paper) ####################################
+  jesse-live:
+    image: salehmir/jesse:latest
+    depends_on:
+      - postgres
+      - redis
+    tty: true
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      - TRADING_MODE=paper
+      - BINANCE_TESTNET=true
+    volumes:
+      - ../:/home
+      - trade-logs:/home/logs
+    container_name: jesse-live
+    command: bash -c "jesse install-live --no-strict && jesse live"
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'jesse' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
   ### PostgreSQL ######################################################
   postgres:
@@ -41,3 +74,4 @@ services:
 
 volumes:
   postgres-data:
+  trade-logs:

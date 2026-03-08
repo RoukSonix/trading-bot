@@ -23,6 +23,7 @@ from .ai_mixin import AIMixin
 from .factors_mixin import FactorsMixin
 from .sentiment_mixin import SentimentMixin
 from .alerts_mixin import AlertsMixin
+from .safety import SafetyManager
 
 # state_provider is at jesse-bot root, not in the strategy package
 try:
@@ -71,7 +72,13 @@ class AIGridStrategy(Strategy):
         self._ai_mixin = AIMixin()
         self._factors_mixin = FactorsMixin()
         self._sentiment_mixin = SentimentMixin(cache_interval_candles=60)
-        self._alerts_mixin = AlertsMixin(is_live=False)  # Updated in before() based on context
+        self._alerts_mixin = AlertsMixin(is_live=False)  # Updated in _update_live_status()
+
+        # Safety manager for live trading
+        self._safety_manager = SafetyManager()
+        self.vars['peak_equity'] = None
+        self.vars['daily_starting_balance'] = None
+        self.vars['daily_pnl'] = 0.0
 
         # Status alert counter
         self.vars['status_alert_counter'] = 0
@@ -290,11 +297,15 @@ class AIGridStrategy(Strategy):
 
     def filters(self):
         """Pre-trade filters."""
-        return [
+        filters = [
             self._filter_volatility,
             self._filter_max_grid_levels,
             self._filter_grid_suitability,
         ]
+        # Add safety filter in live mode
+        if self.is_live:
+            filters.insert(0, self._filter_safety)
+        return filters
 
     def before(self):
         """Called before strategy logic each candle.
@@ -303,9 +314,30 @@ class AIGridStrategy(Strategy):
         and sets grid direction accordingly. Rebuilds grid when direction changes.
         Calculates factors and ticks sentiment cache.
         Periodically runs AI analysis when ai_enabled=True.
+        In live mode, tracks peak equity and daily PnL for safety checks.
         """
         # Increment candle counter
         self.vars['candle_count'] += 1
+
+        # Live mode: track equity for safety checks
+        if self.is_live:
+            current_equity = self.balance
+            if self.vars['peak_equity'] is None or current_equity > self.vars['peak_equity']:
+                self.vars['peak_equity'] = current_equity
+            if self.vars['daily_starting_balance'] is None:
+                self.vars['daily_starting_balance'] = current_equity
+
+            # Emergency stop check
+            import os
+            stop_file = os.environ.get('EMERGENCY_STOP_FILE', 'EMERGENCY_STOP')
+            if self._safety_manager.emergency_stop_check(stop_file):
+                logger.warning("EMERGENCY STOP triggered — liquidating all positions")
+                if self.position.is_open:
+                    self.liquidate()
+                if self.hp.get('alerts_enabled', True):
+                    self._alerts_mixin.send_error_alert(
+                        "EMERGENCY STOP triggered", context="safety"
+                    )
 
         # Tick sentiment cache
         self._sentiment_mixin.tick()
@@ -444,6 +476,18 @@ class AIGridStrategy(Strategy):
                 'pnl_pct': pnl_pct,
             })
 
+        # Log trade in live mode
+        if self.is_live:
+            self._safety_manager.log_trade({
+                'symbol': self.symbol,
+                'side': side,
+                'entry_price': getattr(closed_trade, 'entry_price', 0.0),
+                'exit_price': getattr(closed_trade, 'exit_price', self.price),
+                'qty': abs(getattr(closed_trade, 'qty', 0.0)),
+                'pnl': pnl,
+                'pnl_pct': pnl_pct,
+            })
+
         gm = self._get_grid_manager()
         gm.reset()
         self.vars['filled_levels'] = set()
@@ -553,6 +597,49 @@ class AIGridStrategy(Strategy):
         )
 
     # ==================== Filters ====================
+
+    def _filter_safety(self) -> bool:
+        """Safety filter for live mode — checks position size, daily loss, drawdown."""
+        import os
+
+        balance = self.balance
+        qty = self._calculate_position_size()
+        price = self.price
+
+        max_pos_pct = float(os.environ.get('RISK_MAX_POSITION_PCT', '10'))
+        daily_loss_pct = float(os.environ.get('RISK_DAILY_LOSS_LIMIT_PCT', '5'))
+        max_dd_pct = float(os.environ.get('RISK_MAX_DRAWDOWN_PCT', '10'))
+
+        peak_equity = self.vars.get('peak_equity', balance)
+        starting_balance = self.vars.get('daily_starting_balance', balance)
+        daily_pnl = balance - starting_balance
+
+        results = self._safety_manager.run_all_checks(
+            qty=qty,
+            price=price,
+            balance=balance,
+            current_pnl=daily_pnl,
+            peak_equity=peak_equity,
+            current_equity=balance,
+            starting_balance=starting_balance,
+            max_position_pct=max_pos_pct,
+            daily_loss_limit_pct=daily_loss_pct,
+            max_drawdown_pct=max_dd_pct,
+        )
+
+        if not results['all_ok']:
+            failed = [k for k, v in results.items() if k != 'all_ok' and not v]
+            # emergency_stop is True when triggered, so check it separately
+            if results['emergency_stop']:
+                failed.append('emergency_stop')
+            logger.warning(f"Safety check failed: {failed}")
+            if self.hp.get('alerts_enabled', True):
+                self._alerts_mixin.send_error_alert(
+                    f"Safety check blocked trade: {failed}", context="safety"
+                )
+            return False
+
+        return True
 
     def _filter_volatility(self) -> bool:
         """Reject trades in extreme volatility."""
