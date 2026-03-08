@@ -206,8 +206,12 @@ def detect_trend(prices: list[float], fast_period: int = 10, slow_period: int = 
         slow_period: Slow SMA period.
 
     Returns:
-        'uptrend', 'downtrend', or 'neutral' if not enough data.
+        'uptrend', 'downtrend', or 'neutral' if not enough data
+        or if fast_period >= slow_period (invalid crossover).
     """
+    if fast_period >= slow_period:
+        return 'neutral'
+
     if len(prices) < slow_period:
         return 'neutral'
 

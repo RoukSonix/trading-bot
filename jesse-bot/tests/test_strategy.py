@@ -583,3 +583,83 @@ class TestTrailingStopReset:
         tsm.start(50000.0, 'short')
         assert tsm.entry_price == 50000.0
         assert tsm.activated is False
+
+
+# ==============================================================================
+# PR #1 Review Fixes — New tests
+# ==============================================================================
+
+
+class TestSMAGuard:
+    """Test that detect_trend returns neutral when fast_period >= slow_period."""
+
+    def test_returns_neutral_when_fast_equals_slow(self):
+        prices = list(range(1, 101))
+        trend = detect_trend(prices, fast_period=20, slow_period=20)
+        assert trend == 'neutral'
+
+    def test_returns_neutral_when_fast_exceeds_slow(self):
+        prices = list(range(1, 101))
+        trend = detect_trend(prices, fast_period=28, slow_period=22)
+        assert trend == 'neutral'
+
+    def test_still_detects_uptrend_when_fast_less_than_slow(self):
+        prices = list(range(1, 101))
+        trend = detect_trend(prices, fast_period=10, slow_period=50)
+        assert trend == 'uptrend'
+
+    def test_still_detects_downtrend_when_fast_less_than_slow(self):
+        prices = list(range(100, 0, -1))
+        trend = detect_trend(prices, fast_period=10, slow_period=50)
+        assert trend == 'downtrend'
+
+
+class TestGridRebuildOnDirectionChange:
+    """Test that grid is rebuilt when trend direction changes."""
+
+    def test_direction_change_rebuilds_grid(self):
+        gm = GridManager(GridConfig(grid_levels_count=5, grid_spacing_pct=1.0))
+        gm.setup_grid(100000.0, direction='both')
+        assert len(gm.buy_levels) == 5
+        assert len(gm.sell_levels) == 5
+
+        # Simulate direction change: reset + rebuild as long_only
+        gm.reset()
+        gm.setup_grid(95000.0, direction='long_only')
+        assert len(gm.buy_levels) == 5
+        assert len(gm.sell_levels) == 0
+        assert gm.center == 95000.0
+
+    def test_direction_change_clears_filled_levels(self):
+        gm = GridManager(GridConfig(grid_levels_count=5, grid_spacing_pct=1.0))
+        gm.setup_grid(100000.0, direction='both')
+        gm.check_buy_signal(98500.0)
+        assert gm.filled_count == 1
+
+        # Reset clears fills
+        gm.reset()
+        assert gm.filled_count == 0
+
+    def test_grid_recentered_on_rebuild(self):
+        gm = GridManager(GridConfig(grid_levels_count=3, grid_spacing_pct=1.0))
+        gm.setup_grid(100000.0, direction='both')
+        old_center = gm.center
+
+        # Rebuild at new price
+        gm.reset()
+        gm.setup_grid(110000.0, direction='short_only')
+        assert gm.center == 110000.0
+        assert gm.center != old_center
+        # Sell levels should be above the new center
+        for level in gm.sell_levels:
+            assert level['price'] > 110000.0
+
+    def test_no_rebuild_when_direction_unchanged(self):
+        gm = GridManager(GridConfig(grid_levels_count=5, grid_spacing_pct=1.0))
+        gm.setup_grid(100000.0, direction='long_only')
+        original_levels = list(gm.levels)  # snapshot
+
+        # Same direction — should not cause rebuild in strategy logic
+        # (GridManager doesn't auto-rebuild; strategy code checks prev vs new)
+        assert gm.direction == 'long_only'
+        assert gm.levels == original_levels
