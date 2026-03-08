@@ -313,22 +313,45 @@ def _tab_overview(status):
     sharpe = _compute_sharpe(history)
     max_dd = _compute_max_drawdown(history)
 
-    # ── Balance + Equity Curve ──
+    # ── Account Balance ──
+    bot_status = _api("/api/status")
+    initial_balance = 10000.0
+    account_balance = initial_balance  # default
+    
+    # Try to get real balance from state file
+    try:
+        import json
+        from pathlib import Path
+        state_path = Path("data/bot_state.json")
+        if state_path.exists():
+            with open(state_path) as f:
+                state_data = json.load(f)
+            account_balance = state_data.get("paper_total_value", initial_balance)
+    except Exception:
+        pass
+
+    balance_change = account_balance - initial_balance
+    balance_pct = (balance_change / initial_balance * 100) if initial_balance > 0 else 0
+
     col_bal, col_chart = st.columns([1, 2])
 
     with col_bal:
-        if balance > 0:
-            cls = "bal-pos"
-        elif balance < 0:
-            cls = "bal-neg"
-        else:
-            cls = "bal-zero"
-
-        sign = "+" if balance > 0 else ""
+        # Account balance (main number)
         st.markdown(
             f'<div style="padding:1rem 0">'
-            f'<div class="bal-label">Total P&L</div>'
-            f'<div class="bal-value {cls}">{sign}${balance:,.2f}</div>'
+            f'<div class="bal-label">ACCOUNT BALANCE</div>'
+            f'<div class="bal-value" style="font-size:2.5rem">${account_balance:,.2f}</div>'
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+        # P&L breakdown
+        pnl_cls = "bal-pos" if balance_change > 0 else ("bal-neg" if balance_change < 0 else "bal-zero")
+        pnl_sign = "+" if balance_change > 0 else ""
+        st.markdown(
+            f'<div class="bal-sub">'
+            f'<span style="color:#555">P&L</span> '
+            f'<span class="{pnl_cls}">{pnl_sign}${balance_change:,.2f} ({pnl_sign}{balance_pct:.2f}%)</span>'
             f"</div>",
             unsafe_allow_html=True,
         )
