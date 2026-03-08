@@ -145,3 +145,32 @@ def delete_state(path: Optional[Path] = None) -> None:
     
     if path.exists():
         path.unlink()
+
+
+# ── File-based command IPC ──
+COMMAND_FILE = Path("data/bot_command.json")
+
+
+def write_command(command: str, path: Optional[Path] = None) -> None:
+    """Write a command for the bot to pick up."""
+    path = path or COMMAND_FILE
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        json.dump({"command": command, "timestamp": datetime.now().isoformat()}, f)
+
+
+def read_command(path: Optional[Path] = None) -> Optional[str]:
+    """Read and consume a pending command. Returns command string or None."""
+    path = path or COMMAND_FILE
+    path = Path(path)
+    if not path.exists():
+        return None
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        path.unlink()  # consume command
+        return data.get("command")
+    except (json.JSONDecodeError, KeyError):
+        path.unlink(missing_ok=True)
+        return None

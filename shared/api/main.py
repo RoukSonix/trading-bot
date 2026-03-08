@@ -201,6 +201,30 @@ def get_bot_instance():
     return _bot_instance
 
 
+@app.post("/api/bot/pause")
+async def pause_bot():
+    """Send pause command to bot via file IPC."""
+    from shared.core.state import write_command
+    write_command("pause")
+    return {"success": True, "command": "pause"}
+
+
+@app.post("/api/bot/resume")
+async def resume_bot():
+    """Send resume command to bot via file IPC."""
+    from shared.core.state import write_command
+    write_command("resume")
+    return {"success": True, "command": "resume"}
+
+
+@app.post("/api/bot/stop")
+async def stop_bot():
+    """Send stop command to bot via file IPC."""
+    from shared.core.state import write_command
+    write_command("stop")
+    return {"success": True, "command": "stop"}
+
+
 @app.get("/api/status", response_model=StatusResponse)
 async def get_status():
     """Get current bot status from shared state file."""

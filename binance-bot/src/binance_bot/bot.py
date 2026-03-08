@@ -437,6 +437,25 @@ class TradingBot:
                 # Write shared state for API
                 self._write_shared_state(current_price=None)
                 
+                # Check file-based commands from API/dashboard
+                from shared.core.state import read_command
+                cmd = read_command()
+                if cmd == "pause":
+                    logger.info("Received PAUSE command from dashboard")
+                    self.state = "paused"
+                elif cmd == "resume":
+                    logger.info("Received RESUME command from dashboard")
+                    self.state = "trading"
+                elif cmd == "stop":
+                    logger.info("Received STOP command from dashboard")
+                    self.running = False
+                    break
+                
+                if self.state == "paused":
+                    self._write_shared_state(current_price=None)
+                    await asyncio.sleep(tick_interval)
+                    continue
+                
                 # Check emergency stop
                 if self.emergency_stop.is_triggered:
                     logger.critical("🚨 Emergency stop detected - initiating shutdown")
