@@ -867,11 +867,7 @@ def _tab_settings(status):
         "Interval (sec)", 5, 60, st.session_state.refresh_sec
     )
 
-    st.markdown(
-        f'<div style="color:#333;font-size:0.7rem;padding:2rem 0 0 0">'
-        f"API: {API_URL}</div>",
-        unsafe_allow_html=True,
-    )
+
 
 
 if __name__ == "__main__":
