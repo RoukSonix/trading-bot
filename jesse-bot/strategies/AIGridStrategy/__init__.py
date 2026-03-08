@@ -2,7 +2,8 @@
 AIGridStrategy - Grid Trading Strategy for Jesse
 
 Grid trading strategy with bidirectional support, per-level TP/SL,
-trailing stops, multi-timeframe trend detection, and AI integration.
+trailing stops, multi-timeframe trend detection, AI integration,
+factor analysis, and news sentiment.
 """
 
 import logging
@@ -18,6 +19,8 @@ from .grid_logic import (
     calculate_tp, calculate_sl, detect_trend,
 )
 from .ai_mixin import AIMixin
+from .factors_mixin import FactorsMixin
+from .sentiment_mixin import SentimentMixin
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +54,13 @@ class AIGridStrategy(Strategy):
         # AI candle counter
         self.vars['candle_count'] = 0
         self.vars['last_ai_analysis'] = None
+        self.vars['last_factors'] = None
+        self.vars['last_sentiment'] = None
 
-        # Initialize AI mixin
+        # Initialize mixins
         self._ai_mixin = AIMixin()
+        self._factors_mixin = FactorsMixin()
+        self._sentiment_mixin = SentimentMixin(cache_interval_candles=60)
 
     def _get_grid_manager(self) -> GridManager:
         """Get or create the GridManager instance with current hyperparameters."""
@@ -166,6 +173,20 @@ class AIGridStrategy(Strategy):
                 'type': bool,
                 'default': True,
             },
+            {
+                'name': 'min_grid_suitability',
+                'type': float,
+                'min': 0.1,
+                'max': 0.9,
+                'default': 0.3,
+            },
+            {
+                'name': 'sentiment_weight',
+                'type': float,
+                'min': 0.0,
+                'max': 1.0,
+                'default': 0.3,
+            },
         ]
 
     @property
@@ -252,6 +273,7 @@ class AIGridStrategy(Strategy):
         return [
             self._filter_volatility,
             self._filter_max_grid_levels,
+            self._filter_grid_suitability,
         ]
 
     def before(self):
@@ -259,10 +281,22 @@ class AIGridStrategy(Strategy):
 
         Detects trend using multi-timeframe data (4h candles if available)
         and sets grid direction accordingly. Rebuilds grid when direction changes.
+        Calculates factors and ticks sentiment cache.
         Periodically runs AI analysis when ai_enabled=True.
         """
         # Increment candle counter
         self.vars['candle_count'] += 1
+
+        # Tick sentiment cache
+        self._sentiment_mixin.tick()
+
+        # Calculate factors from current candles
+        if self.candles is not None and len(self.candles) >= 20:
+            factors = self._factors_mixin.calculate_factors(self.candles)
+            self.vars['last_factors'] = factors
+
+        # Cache sentiment
+        self.vars['last_sentiment'] = self._sentiment_mixin.get_sentiment_detail()
 
         # Use 4h candles for trend if available, else fall back to current timeframe
         try:
@@ -297,7 +331,7 @@ class AIGridStrategy(Strategy):
             gm.direction = new_direction
             self.vars['prev_grid_direction'] = new_direction
 
-        # AI periodic analysis
+        # AI periodic analysis (with factors + sentiment context)
         if self.hp.get('ai_enabled', True):
             interval = self.hp.get('ai_review_interval', 60)
             if self.vars['candle_count'] % interval == 0:
@@ -363,6 +397,19 @@ class AIGridStrategy(Strategy):
                 'atr': atr,
                 'close': self.price,
             }
+
+            # Enrich indicators with factors and sentiment context
+            factors = self.vars.get('last_factors')
+            if factors:
+                indicators['factors_context'] = self._factors_mixin.factors_to_ai_context(factors)
+                indicators['grid_suitability'] = self._factors_mixin.grid_suitability_score(factors)
+                indicators['regime'] = self._factors_mixin.detect_regime(factors)
+
+            sentiment = self.vars.get('last_sentiment')
+            if sentiment:
+                indicators['sentiment_context'] = self._sentiment_mixin.sentiment_to_ai_context()
+                indicators['sentiment_score'] = sentiment.get('score', 0.0)
+                indicators['sentiment_weight'] = self.hp.get('sentiment_weight', 0.3)
 
             analysis = self._ai_mixin.ai_analyze_market(candle_data, indicators)
             self.vars['last_ai_analysis'] = analysis
@@ -449,3 +496,13 @@ class AIGridStrategy(Strategy):
         """Ensure we don't have too many filled levels."""
         gm = self._get_grid_manager()
         return gm.filter_max_levels()
+
+    def _filter_grid_suitability(self) -> bool:
+        """Reject trades when market is unsuitable for grid trading."""
+        factors = self.vars.get('last_factors')
+        if factors is None:
+            return True  # No data yet — allow trades
+
+        suitability = self._factors_mixin.grid_suitability_score(factors)
+        threshold = self.hp.get('min_grid_suitability', 0.3)
+        return suitability >= threshold
