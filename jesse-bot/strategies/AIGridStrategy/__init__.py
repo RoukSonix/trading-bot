@@ -11,7 +11,8 @@ import logging
 from jesse.strategies import Strategy
 import jesse.indicators as ta
 from jesse import utils
-from loguru import logger
+
+logger = logging.getLogger(__name__)
 
 from .grid_logic import (
     GridManager, GridConfig,
