@@ -8,37 +8,45 @@
 
 ### Development Workflow (MANDATORY)
 
-**All development MUST use branches + worktree. NEVER commit directly to main.**
+**All development MUST use branches + git worktree. NEVER commit directly to main.**
 
 1. **Create branch + worktree:**
    ```bash
+   cd ~/projects/CentricVoid/trading-bots
    git worktree add ../trading-bots-<task> -b <branch-name>
    cd ../trading-bots-<task>
    ```
+   Branch naming: `sprint-m<N>/<short-description>` (e.g. `sprint-m2/grid-logic`)
 
 2. **Do all work in the worktree**, commit to the branch.
 
-3. **When done**, push branch:
+3. **Run tests before pushing** — all tests must pass:
    ```bash
-   git push origin <branch-name>
+   cd jesse-bot && ../.venv/bin/python -m pytest tests/ -v
    ```
 
-4. **Code review** is done by a SEPARATE ACP agent (not the one who developed).
+4. **When done**, push branch and create PR:
+   ```bash
+   git push origin <branch-name>
+   gh pr create --title "Sprint M<N>: <description>" --body "..."
+   ```
 
-5. **After review approval**, merge to main:
+5. **Code review is done by a SEPARATE ACP agent** (never the same agent that wrote the code). The reviewer reads the diff and leaves inline comments or approves.
+
+6. **After review approval**, merge to main:
    ```bash
    cd ~/projects/CentricVoid/trading-bots
    git merge <branch-name>
-   git push origin main
+   gh pr merge <PR-number> --merge
    ```
 
-6. **Cleanup worktree:**
+7. **Cleanup worktree (ALWAYS after merge):**
    ```bash
    git worktree remove ../trading-bots-<task>
    git branch -d <branch-name>
    ```
 
-**Why:** Multiple agents develop in parallel. Direct commits to main cause conflicts, untested code, and broken builds.
+**Why:** Multiple ACP agents develop in parallel. Direct commits to main cause conflicts, untested code, and broken builds. Code review by a different agent catches blind spots.
 
 ---
 
