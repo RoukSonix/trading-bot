@@ -28,7 +28,8 @@ class TestCheckMaxPositionSize:
 
     def test_within_limit(self, sm):
         """Position value 5% of balance should pass at 10% limit."""
-        assert sm.check_max_position_size(qty=0.05, price=100000, balance=10000, max_pct=10) is True
+        # 0.005 * 100000 = 500 = 5% of 10000, within 10% limit
+        assert sm.check_max_position_size(qty=0.005, price=100000, balance=10000, max_pct=10) is True
 
     def test_at_exact_limit(self, sm):
         """Position value exactly at limit should pass."""
