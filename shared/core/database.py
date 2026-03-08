@@ -11,7 +11,26 @@ DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 DATABASE_URL = f"sqlite:///{DATA_DIR}/trading.db"
 
-engine = create_engine(DATABASE_URL, echo=False)
+engine = create_engine(
+    DATABASE_URL,
+    echo=False,
+    connect_args={
+        "timeout": 30,           # Wait up to 30s for lock
+        "check_same_thread": False,
+    },
+    pool_pre_ping=True,
+)
+
+# Enable WAL mode for concurrent reads/writes
+from sqlalchemy import event
+
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA busy_timeout=30000")
+    cursor.close()
+
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 

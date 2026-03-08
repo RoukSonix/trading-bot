@@ -1,0 +1,16 @@
+# Jesse framework and dependencies
+jesse>=1.13.0
+numpy>=1.26.0
+pandas>=2.0.0
+
+# Our additional dependencies
+python-dotenv>=1.0.0
+loguru>=0.7.0
+
+# For AI layer (future sprints)
+langchain>=0.3.0
+langchain-openai>=0.2.0
+
+# For sentiment analysis (future sprints)
+chromadb>=0.4.0
+aiohttp>=3.9.0
