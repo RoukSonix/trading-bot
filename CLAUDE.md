@@ -33,12 +33,14 @@
 
 5. **Code review is done by a SEPARATE ACP agent** (never the same agent that wrote the code). The reviewer reads the diff and leaves inline comments or approves.
 
-6. **After review approval**, merge via GitHub:
+6. **If review has comments** — a NEW ACP agent is immediately spawned to fix them in the same worktree. No manual handoff. After fix is pushed, re-review.
+
+7. **After review approval**, merge via GitHub:
    ```bash
    gh pr merge <PR-number> --merge
    ```
 
-7. **Cleanup worktree (ALWAYS after merge):**
+8. **Cleanup worktree (ALWAYS after merge):**
    ```bash
    git worktree remove ../trading-bots-<task>
    git branch -d <branch-name>
@@ -479,6 +481,7 @@ GitHub Actions runs `pytest tests/ -v --tb=short` on push/PR to main.
 Python 3.12 in CI. Dependencies from `binance-bot/requirements.txt`.
 
 ---
+
 ## Module Dependency Map
 
 ```
