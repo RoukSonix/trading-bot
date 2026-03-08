@@ -320,22 +320,8 @@ def _tab_overview(status):
     max_dd = _compute_max_drawdown(history)
 
     # ── Account Balance ──
-    bot_status = _api("/api/status")
     initial_balance = 10000.0
-    account_balance = initial_balance  # default
-    
-    # Try to get real balance from state file
-    try:
-        import json
-        from pathlib import Path
-        state_path = Path("data/bot_state.json")
-        if state_path.exists():
-            with open(state_path) as f:
-                state_data = json.load(f)
-            account_balance = state_data.get("paper_total_value", initial_balance)
-    except Exception:
-        pass
-
+    account_balance = initial_balance + total_pnl + unrealized
     balance_change = account_balance - initial_balance
     balance_pct = (balance_change / initial_balance * 100) if initial_balance > 0 else 0
 
