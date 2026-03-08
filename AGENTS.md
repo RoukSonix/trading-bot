@@ -6,6 +6,40 @@
 ### Maintenance Rule
 **After fixing any bug, issue, or task listed in this file — remove its entry from AGENTS.md and add a note to CHANGELOG.md.** Keep this file clean and current. If CHANGELOG.md doesn't exist, create it.
 
+### Development Workflow (MANDATORY)
+
+**All development MUST use branches + worktree. NEVER commit directly to main.**
+
+1. **Create branch + worktree:**
+   ```bash
+   git worktree add ../trading-bots-<task> -b <branch-name>
+   cd ../trading-bots-<task>
+   ```
+
+2. **Do all work in the worktree**, commit to the branch.
+
+3. **When done**, push branch:
+   ```bash
+   git push origin <branch-name>
+   ```
+
+4. **Code review** is done by a SEPARATE ACP agent (not the one who developed).
+
+5. **After review approval**, merge to main:
+   ```bash
+   cd ~/projects/CentricVoid/trading-bots
+   git merge <branch-name>
+   git push origin main
+   ```
+
+6. **Cleanup worktree:**
+   ```bash
+   git worktree remove ../trading-bots-<task>
+   git branch -d <branch-name>
+   ```
+
+**Why:** Multiple agents develop in parallel. Direct commits to main cause conflicts, untested code, and broken builds.
+
 ---
 
 ## Project Overview
