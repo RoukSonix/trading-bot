@@ -38,15 +38,15 @@ button[kind="header"] { display: none; }
 
 /* Tabs */
 .stTabs [data-baseweb="tab-list"] {
-    gap: 0; border-bottom: 1px solid #1e1e1e; background: transparent;
+    gap: 0; border-bottom: 1px solid #2d2d4a; background: transparent;
 }
 .stTabs [data-baseweb="tab"] {
     font-size: 0.72rem; font-weight: 500; letter-spacing: 0.1em;
-    text-transform: uppercase; color: #555; padding: 0.6rem 1.5rem;
+    text-transform: uppercase; color: #606080; padding: 0.6rem 1.5rem;
     background: transparent;
 }
 .stTabs [aria-selected="true"] {
-    color: #d0d0d0 !important; border-bottom: 2px solid #d0d0d0 !important;
+    color: #e2e2f0 !important; border-bottom: 2px solid #7b8cde !important;
     background: transparent !important;
 }
 
@@ -56,25 +56,28 @@ button[kind="header"] { display: none; }
 }
 [data-testid="stMetricLabel"] {
     font-size: 0.68rem !important; text-transform: uppercase;
-    letter-spacing: 0.08em; color: #555 !important;
+    letter-spacing: 0.08em; color: #606080 !important;
 }
 
 /* Buttons */
-.stButton > button { border-radius: 2px; font-size: 0.8rem; letter-spacing: 0.03em; }
+.stButton > button {
+    border-radius: 4px; font-size: 0.8rem; letter-spacing: 0.03em;
+    border: 1px solid #2d2d4a;
+}
 
 /* ── Custom HTML elements ── */
 
 .hdr {
     display: flex; align-items: baseline; gap: 1.5rem;
-    padding: 0 0 0.75rem 0; border-bottom: 1px solid #1e1e1e;
+    padding: 0 0 0.75rem 0; border-bottom: 1px solid #2d2d4a;
     margin-bottom: 0.5rem;
 }
 .hdr-sym {
-    font-size: 0.8rem; font-weight: 600; color: #808080;
+    font-size: 0.8rem; font-weight: 600; color: #8888a0;
     letter-spacing: 0.08em; text-transform: uppercase;
 }
 .hdr-price {
-    font-size: 1.3rem; font-weight: 700; color: #e0e0e0;
+    font-size: 1.3rem; font-weight: 700; color: #e2e2f0;
     font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 .hdr-dot {
@@ -87,7 +90,7 @@ button[kind="header"] { display: none; }
 
 /* Balance */
 .bal-label {
-    font-size: 0.65rem; font-weight: 500; color: #444;
+    font-size: 0.65rem; font-weight: 500; color: #505068;
     letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 0.15rem;
 }
 .bal-value {
@@ -96,7 +99,7 @@ button[kind="header"] { display: none; }
 }
 .bal-pos { color: #22c55e; }
 .bal-neg { color: #ef4444; }
-.bal-zero { color: #666; }
+.bal-zero { color: #6a6a85; }
 .bal-sub {
     font-size: 0.78rem; font-weight: 500; margin-top: 0.15rem;
     font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
@@ -104,14 +107,15 @@ button[kind="header"] { display: none; }
 
 /* Section label */
 .sect {
-    font-size: 0.65rem; font-weight: 600; color: #444;
+    font-size: 0.65rem; font-weight: 600; color: #505068;
     letter-spacing: 0.12em; text-transform: uppercase; padding: 1rem 0 0.4rem 0;
 }
 
 /* Position card */
 .pos-card {
-    background: #111; border: 1px solid #1e1e1e;
-    padding: 0.75rem 1rem; margin: 0.4rem 0;
+    background: #22223a; border: 1px solid #2d2d4a;
+    border-radius: 6px; padding: 0.75rem 1rem; margin: 0.4rem 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 .pos-hdr {
     display: flex; justify-content: space-between; align-items: center;
@@ -119,82 +123,84 @@ button[kind="header"] { display: none; }
 }
 .pos-side {
     font-size: 0.65rem; font-weight: 600; letter-spacing: 0.1em;
-    text-transform: uppercase; padding: 0.1rem 0.4rem;
+    text-transform: uppercase; padding: 0.1rem 0.4rem; border-radius: 3px;
 }
-.pos-long { color: #22c55e; border: 1px solid #22c55e33; }
-.pos-short { color: #ef4444; border: 1px solid #ef444433; }
-.pos-flat { color: #666; border: 1px solid #33333333; }
+.pos-long { color: #22c55e; border: 1px solid #22c55e33; background: #22c55e0a; }
+.pos-short { color: #ef4444; border: 1px solid #ef444433; background: #ef44440a; }
+.pos-flat { color: #6a6a85; border: 1px solid #3a3a5533; }
 .pos-pnl {
     font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
     font-weight: 600; font-size: 1rem;
 }
 .pos-details {
-    display: flex; gap: 2rem; font-size: 0.78rem; color: #808080;
+    display: flex; gap: 2rem; font-size: 0.78rem; color: #8888a0;
     font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
 /* Activity log */
 .log-entry {
     display: flex; gap: 0.8rem; padding: 0.35rem 0;
-    border-bottom: 1px solid #141414; font-size: 0.78rem;
+    border-bottom: 1px solid #262644; font-size: 0.78rem;
     font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
     align-items: baseline;
 }
-.log-time { color: #444; white-space: nowrap; min-width: 5rem; }
+.log-time { color: #505068; white-space: nowrap; min-width: 5rem; }
 .log-tag {
     font-weight: 600; font-size: 0.6rem; letter-spacing: 0.05em;
     padding: 0.08rem 0.3rem; min-width: 3.2rem; text-align: center;
-    white-space: nowrap;
+    white-space: nowrap; border-radius: 3px;
 }
-.tag-trade { color: #22c55e; border: 1px solid #22c55e44; }
-.tag-signal { color: #3b82f6; border: 1px solid #3b82f644; }
-.tag-error { color: #ef4444; border: 1px solid #ef444444; }
-.tag-info { color: #666; border: 1px solid #66666644; }
-.tag-warn { color: #eab308; border: 1px solid #eab30844; }
-.log-msg { color: #999; }
+.tag-trade { color: #22c55e; border: 1px solid #22c55e33; background: #22c55e0a; }
+.tag-signal { color: #7b8cde; border: 1px solid #7b8cde33; background: #7b8cde0a; }
+.tag-error { color: #ef4444; border: 1px solid #ef444433; background: #ef44440a; }
+.tag-info { color: #6a6a85; border: 1px solid #6a6a8533; background: #6a6a850a; }
+.tag-warn { color: #eab308; border: 1px solid #eab30833; background: #eab3080a; }
+.log-msg { color: #9898b0; }
 
 /* Grid ladder */
 .grid-row {
     display: flex; align-items: center; padding: 0.3rem 0.8rem;
-    border-bottom: 1px solid #141414;
+    border-bottom: 1px solid #262644;
     font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
     font-size: 0.78rem;
 }
 .grid-row:last-child { border-bottom: none; }
-.grid-price { min-width: 7rem; font-weight: 500; color: #d0d0d0; }
+.grid-price { min-width: 7rem; font-weight: 500; color: #e2e2f0; }
 .grid-side {
     min-width: 3rem; font-weight: 600; font-size: 0.65rem;
     letter-spacing: 0.05em; text-transform: uppercase;
 }
 .g-buy { color: #22c55e; }
 .g-sell { color: #ef4444; }
-.grid-status { min-width: 4rem; font-size: 0.65rem; color: #555; }
-.grid-filled { color: #808080; text-decoration: line-through; }
-.grid-tpsl { font-size: 0.7rem; color: #555; margin-left: auto; }
+.grid-status { min-width: 4rem; font-size: 0.65rem; color: #606080; }
+.grid-filled { color: #8888a0; text-decoration: line-through; }
+.grid-tpsl { font-size: 0.7rem; color: #606080; margin-left: auto; }
 .grid-current {
-    background: #1a1700; border: 1px solid #eab30833;
-    padding: 0.2rem 0.8rem; font-size: 0.72rem; color: #eab308;
-    font-weight: 600;
+    background: #2a2838; border: 1px solid #eab30833;
+    border-radius: 4px; padding: 0.2rem 0.8rem; font-size: 0.72rem;
+    color: #eab308; font-weight: 600;
     font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
 /* Config groups */
 .cfg-group {
-    border: 1px solid #1e1e1e; padding: 0.75rem 1rem; margin: 0.4rem 0;
+    border: 1px solid #2d2d4a; border-radius: 6px;
+    padding: 0.75rem 1rem; margin: 0.4rem 0;
+    background: #22223a; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 .cfg-row {
     display: flex; justify-content: space-between; padding: 0.25rem 0;
-    font-size: 0.78rem; border-bottom: 1px solid #141414;
+    font-size: 0.78rem; border-bottom: 1px solid #262644;
 }
 .cfg-row:last-child { border-bottom: none; }
-.cfg-key { color: #555; }
+.cfg-key { color: #606080; }
 .cfg-val {
-    color: #d0d0d0; font-weight: 500;
+    color: #e2e2f0; font-weight: 500;
     font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
 /* Muted placeholder text */
-.muted { color: #333; font-size: 0.8rem; padding: 2rem; text-align: center; }
+.muted { color: #505068; font-size: 0.8rem; padding: 2rem; text-align: center; }
 </style>"""
 
 
@@ -203,8 +209,8 @@ button[kind="header"] { display: none; }
 _PLOTLY_BASE = dict(
     template="plotly_dark",
     paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace"),
+    plot_bgcolor="rgba(26,26,46,0.4)",
+    font=dict(family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace", color="#8888a0"),
     showlegend=False,
 )
 
@@ -252,8 +258,8 @@ def _header(status):
             '<div class="hdr">'
             '<span class="hdr-sym">---</span>'
             '<span class="hdr-status">'
-            '<span class="hdr-dot" style="background:#666"></span>'
-            '<span style="color:#666">OFFLINE</span>'
+            '<span class="hdr-dot" style="background:#6a6a85"></span>'
+            '<span style="color:#6a6a85">OFFLINE</span>'
             "</span></div>",
             unsafe_allow_html=True,
         )
@@ -269,7 +275,7 @@ def _header(status):
 
     price_str = f"${price:,.2f}" if price else "---"
     colors = {"trading": "#22c55e", "waiting": "#eab308", "paused": "#eab308"}
-    c = colors.get(state, "#666")
+    c = colors.get(state, "#6a6a85")
 
     st.markdown(
         f'<div class="hdr">'
@@ -338,10 +344,10 @@ def _tab_overview(status):
             uc = "#22c55e" if unrealized >= 0 else "#ef4444"
             st.markdown(
                 f'<div class="bal-sub">'
-                f'<span style="color:#555">Realized</span> '
+                f'<span style="color:#606080">Realized</span> '
                 f'<span style="color:{rc}">${total_pnl:+,.2f}</span>'
                 f"&nbsp;&nbsp;"
-                f'<span style="color:#555">Unrealized</span> '
+                f'<span style="color:#606080">Unrealized</span> '
                 f'<span style="color:{uc}">${unrealized:+,.2f}</span>'
                 f"</div>",
                 unsafe_allow_html=True,
@@ -434,16 +440,16 @@ def _equity_chart(history):
             hovertemplate="$%{y:,.2f}<extra></extra>",
         )
     )
-    fig.add_hline(y=0, line_dash="dot", line_color="#333", line_width=0.5)
+    fig.add_hline(y=0, line_dash="dot", line_color="#2d2d4a", line_width=0.5)
     fig.update_layout(
         **_PLOTLY_BASE,
         height=200,
         margin=dict(l=0, r=0, t=10, b=0),
-        xaxis=dict(showgrid=False, tickfont=dict(size=9, color="#444")),
+        xaxis=dict(showgrid=False, tickfont=dict(size=9, color="#505068")),
         yaxis=dict(
             showgrid=True,
-            gridcolor="#1a1a1a",
-            tickfont=dict(size=9, color="#444"),
+            gridcolor="#262644",
+            tickfont=dict(size=9, color="#505068"),
             tickprefix="$",
             zeroline=False,
         ),
@@ -455,7 +461,7 @@ def _equity_chart(history):
 def _render_position(positions):
     if not positions or not positions.get("positions"):
         st.markdown(
-            '<div style="color:#444;font-size:0.8rem;padding:0.3rem 0">'
+            '<div style="color:#505068;font-size:0.8rem;padding:0.3rem 0">'
             "No active position</div>",
             unsafe_allow_html=True,
         )
@@ -469,7 +475,7 @@ def _render_position(positions):
 
         if amount == 0:
             st.markdown(
-                '<div style="color:#444;font-size:0.8rem;padding:0.3rem 0">'
+                '<div style="color:#505068;font-size:0.8rem;padding:0.3rem 0">'
                 "No active position</div>",
                 unsafe_allow_html=True,
             )
@@ -504,13 +510,13 @@ def _render_strategy(status):
         regime = engine.get("current_regime", "---")
         confidence = engine.get("confidence", None)
         parts = [
-            f'<span style="color:#d0d0d0;font-weight:500">{name}</span>',
+            f'<span style="color:#e2e2f0;font-weight:500">{name}</span>',
             f"Regime: {regime}",
         ]
         if confidence is not None:
             parts.append(f"Confidence: {confidence:.0%}")
         st.markdown(
-            '<div style="font-size:0.8rem;color:#808080;padding:0.3rem 0">'
+            '<div style="font-size:0.8rem;color:#8888a0;padding:0.3rem 0">'
             + "&nbsp;&nbsp;&middot;&nbsp;&nbsp;".join(parts)
             + "</div>",
             unsafe_allow_html=True,
@@ -520,8 +526,8 @@ def _render_strategy(status):
         levels = config.get("grid_levels", "?")
         spacing = config.get("grid_spacing_pct", "?")
         st.markdown(
-            f'<div style="font-size:0.8rem;color:#808080;padding:0.3rem 0">'
-            f'<span style="color:#d0d0d0;font-weight:500">{ai}</span>'
+            f'<div style="font-size:0.8rem;color:#8888a0;padding:0.3rem 0">'
+            f'<span style="color:#e2e2f0;font-weight:500">{ai}</span>'
             f"&nbsp;&nbsp;&middot;&nbsp;&nbsp;{levels} levels"
             f"&nbsp;&nbsp;&middot;&nbsp;&nbsp;{spacing}% spacing"
             f"</div>",
@@ -529,7 +535,7 @@ def _render_strategy(status):
         )
     else:
         st.markdown(
-            '<div style="color:#444;font-size:0.8rem;padding:0.3rem 0">'
+            '<div style="color:#505068;font-size:0.8rem;padding:0.3rem 0">'
             "Not available</div>",
             unsafe_allow_html=True,
         )
@@ -662,7 +668,7 @@ def _tab_grid(status):
     st.markdown('<div class="sect">LEVEL DETAIL</div>', unsafe_allow_html=True)
 
     sorted_levels = sorted(levels, key=lambda x: x["price"], reverse=True)
-    html = ['<div style="border:1px solid #1e1e1e;background:#0e0e0e">']
+    html = ['<div style="border:1px solid #2d2d4a;background:#1e1e34;border-radius:6px;overflow:hidden">']
     price_inserted = False
 
     for lv in sorted_levels:
@@ -735,7 +741,7 @@ def _grid_chart(levels, current_price):
         side = lv.get("side", "buy")
 
         if filled:
-            color, width, dash = "#333", 1, "dot"
+            color, width, dash = "#3a3a55", 1, "dot"
         elif side == "buy":
             color, width, dash = "#22c55e", 1.5, "solid"
         else:
@@ -780,7 +786,7 @@ def _grid_chart(levels, current_price):
             range=[y_min, y_max],
             showgrid=False,
             tickprefix="$",
-            tickfont=dict(size=9, color="#444"),
+            tickfont=dict(size=9, color="#505068"),
         ),
     )
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
@@ -842,7 +848,7 @@ def _tab_settings(status):
         st.markdown(html, unsafe_allow_html=True)
     else:
         st.markdown(
-            '<div style="color:#444;font-size:0.8rem">Not available</div>',
+            '<div style="color:#505068;font-size:0.8rem">Not available</div>',
             unsafe_allow_html=True,
         )
 
