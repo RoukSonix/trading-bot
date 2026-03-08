@@ -15,10 +15,9 @@ routes = [
 
 # Additional data routes for multi-timeframe strategies
 data_routes = [
-    # Example: use 4h for trend detection
-    # {
-    #     'exchange': 'Binance Perpetual Futures',
-    #     'symbol': 'BTC-USDT',
-    #     'timeframe': '4h',
-    # },
+    {
+        'exchange': 'Binance Perpetual Futures',
+        'symbol': 'BTC-USDT',
+        'timeframe': '4h',
+    },
 ]
