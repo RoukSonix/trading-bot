@@ -72,12 +72,11 @@ class AIMixin:
         if not self.ai_available:
             return self._fallback.analyze_market(candles, indicators)
 
+        coro = self._ai_analyze_market_async(candles, indicators)
         try:
-            result = self._run_ai_with_timeout(
-                self._ai_analyze_market_async(candles, indicators)
-            )
-            return result
+            return self._run_ai_with_timeout(coro)
         except Exception as e:
+            coro.close()
             logger.warning(f"AI analyze_market failed: {e}. Using fallback.")
             return self._fallback.analyze_market(candles, indicators)
 
@@ -98,12 +97,11 @@ class AIMixin:
         if not self.ai_available:
             return self._fallback.review_position(position_info, market_data)
 
+        coro = self._ai_review_position_async(position_info, market_data)
         try:
-            result = self._run_ai_with_timeout(
-                self._ai_review_position_async(position_info, market_data)
-            )
-            return result
+            return self._run_ai_with_timeout(coro)
         except Exception as e:
+            coro.close()
             logger.warning(f"AI review_position failed: {e}. Using fallback.")
             return self._fallback.review_position(position_info, market_data)
 
@@ -124,12 +122,11 @@ class AIMixin:
         if not self.ai_available:
             return self._fallback.optimize_grid(current_grid, market_analysis)
 
+        coro = self._ai_optimize_grid_async(current_grid, market_analysis)
         try:
-            result = self._run_ai_with_timeout(
-                self._ai_optimize_grid_async(current_grid, market_analysis)
-            )
-            return result
+            return self._run_ai_with_timeout(coro)
         except Exception as e:
+            coro.close()
             logger.warning(f"AI optimize_grid failed: {e}. Using fallback.")
             return self._fallback.optimize_grid(current_grid, market_analysis)
 
