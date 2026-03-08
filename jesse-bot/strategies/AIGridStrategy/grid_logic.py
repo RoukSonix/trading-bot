@@ -160,6 +160,40 @@ class GridManager:
         """Count of filled levels."""
         return len(self.filled_levels)
 
+    def to_dict(self) -> dict:
+        """Serialize grid state to dict (for dashboard/API)."""
+        return {
+            'config': {
+                'grid_levels_count': self.config.grid_levels_count,
+                'grid_spacing_pct': self.config.grid_spacing_pct,
+                'amount_pct': self.config.amount_pct,
+                'atr_period': self.config.atr_period,
+                'tp_atr_mult': self.config.tp_atr_mult,
+                'sl_atr_mult': self.config.sl_atr_mult,
+                'max_total_levels': self.config.max_total_levels,
+                'trailing_activation_pct': self.config.trailing_activation_pct,
+                'trailing_distance_pct': self.config.trailing_distance_pct,
+                'trend_sma_fast': self.config.trend_sma_fast,
+                'trend_sma_slow': self.config.trend_sma_slow,
+            },
+            'levels': [dict(l) for l in self.levels],
+            'center': self.center,
+            'direction': self.direction,
+            'filled_levels': list(self.filled_levels),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'GridManager':
+        """Deserialize grid state from dict."""
+        config_data = data.get('config', {})
+        config = GridConfig(**config_data)
+        gm = cls(config)
+        gm.levels = data.get('levels', [])
+        gm.center = data.get('center')
+        gm.direction = data.get('direction', 'both')
+        gm.filled_levels = set(data.get('filled_levels', []))
+        return gm
+
 
 def calculate_tp(entry_price: float, side: str, atr: float, tp_mult: float) -> float:
     """Calculate take-profit price.

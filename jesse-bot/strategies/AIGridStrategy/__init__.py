@@ -2,8 +2,10 @@
 AIGridStrategy - Grid Trading Strategy for Jesse
 
 Grid trading strategy with bidirectional support, per-level TP/SL,
-trailing stops, and multi-timeframe trend detection.
+trailing stops, multi-timeframe trend detection, and AI integration.
 """
+
+import logging
 
 from jesse.strategies import Strategy
 import jesse.indicators as ta
@@ -15,6 +17,9 @@ from .grid_logic import (
     TrailingStopManager,
     calculate_tp, calculate_sl, detect_trend,
 )
+from .ai_mixin import AIMixin
+
+logger = logging.getLogger(__name__)
 
 
 class AIGridStrategy(Strategy):
@@ -24,8 +29,8 @@ class AIGridStrategy(Strategy):
     Places buy orders below current price and sell orders above.
     When price crosses a level, a trade is executed and opposite level is created.
     Supports bidirectional filtering based on multi-timeframe trend detection.
-
     Uses GridManager from grid_logic.py as the canonical grid implementation.
+    AI integration provides periodic market analysis and position review.
     """
 
     def __init__(self):
@@ -42,6 +47,13 @@ class AIGridStrategy(Strategy):
 
         # Trailing stop manager (initialized when position opens)
         self.vars['trailing_stop'] = None
+
+        # AI candle counter
+        self.vars['candle_count'] = 0
+        self.vars['last_ai_analysis'] = None
+
+        # Initialize AI mixin
+        self._ai_mixin = AIMixin()
 
     def _get_grid_manager(self) -> GridManager:
         """Get or create the GridManager instance with current hyperparameters."""
@@ -142,6 +154,18 @@ class AIGridStrategy(Strategy):
                 'max': 100,
                 'default': 40,
             },
+            {
+                'name': 'ai_review_interval',
+                'type': int,
+                'min': 15,
+                'max': 240,
+                'default': 60,
+            },
+            {
+                'name': 'ai_enabled',
+                'type': bool,
+                'default': True,
+            },
         ]
 
     @property
@@ -235,7 +259,11 @@ class AIGridStrategy(Strategy):
 
         Detects trend using multi-timeframe data (4h candles if available)
         and sets grid direction accordingly. Rebuilds grid when direction changes.
+        Periodically runs AI analysis when ai_enabled=True.
         """
+        # Increment candle counter
+        self.vars['candle_count'] += 1
+
         # Use 4h candles for trend if available, else fall back to current timeframe
         try:
             candles_4h = self.get_candles(self.exchange, self.symbol, '4h')
@@ -269,23 +297,34 @@ class AIGridStrategy(Strategy):
             gm.direction = new_direction
             self.vars['prev_grid_direction'] = new_direction
 
+        # AI periodic analysis
+        if self.hp.get('ai_enabled', True):
+            interval = self.hp.get('ai_review_interval', 60)
+            if self.vars['candle_count'] % interval == 0:
+                self._run_ai_analysis()
+
     def after(self):
         """Called after strategy logic each candle."""
         pass
 
     def update_position(self):
-        """Called every candle when position is open. Manages trailing stop."""
+        """Called every candle when position is open. Manages trailing stop and AI review."""
+        # Trailing stop update
         tsm = self.vars.get('trailing_stop')
-        if tsm is None:
-            return
+        if tsm is not None:
+            new_stop = tsm.update(self.price)
+            if new_stop is not None:
+                qty = abs(self.position.qty)
+                self.stop_loss = qty, new_stop
 
-        new_stop = tsm.update(self.price)
-        if new_stop is not None:
-            qty = abs(self.position.qty)
-            self.stop_loss = qty, new_stop
+        # AI position review
+        if self.hp.get('ai_enabled', True):
+            interval = self.hp.get('ai_review_interval', 60)
+            if self.vars['candle_count'] % interval == 0:
+                self._run_ai_position_review()
 
     def on_open_position(self, order):
-        """Called when position opens. Initialize trailing stop."""
+        """Called when position opens. Initialize trailing stop and log AI context."""
         side = 'long' if self.is_long else 'short'
         tsm = TrailingStopManager(
             activation_pct=self.hp['trailing_activation_pct'],
@@ -294,12 +333,94 @@ class AIGridStrategy(Strategy):
         tsm.start(self.position.entry_price, side)
         self.vars['trailing_stop'] = tsm
 
+        # Log AI analysis context if available
+        analysis = self.vars.get('last_ai_analysis')
+        if analysis:
+            logger.info(
+                f"Position opened ({side}) with AI context: "
+                f"trend={analysis.get('trend')}, "
+                f"confidence={analysis.get('confidence')}, "
+                f"recommendation={analysis.get('recommendation')}"
+            )
+
     def on_close_position(self, order, closed_trade):
         """Called when position closes."""
         gm = self._get_grid_manager()
         gm.reset()
         self.vars['filled_levels'] = set()
         self.vars['trailing_stop'] = None
+
+    # ==================== AI Integration ====================
+
+    def _run_ai_analysis(self):
+        """Run AI market analysis and update grid direction if needed."""
+        try:
+            candle_data = self.candles.tolist() if self.candles is not None else []
+            atr = ta.atr(self.candles, self.hp['atr_period']) if self.candles is not None else 0.0
+
+            indicators = {
+                'rsi': ta.rsi(self.candles) if self.candles is not None else 50.0,
+                'atr': atr,
+                'close': self.price,
+            }
+
+            analysis = self._ai_mixin.ai_analyze_market(candle_data, indicators)
+            self.vars['last_ai_analysis'] = analysis
+
+            # Apply AI-suggested direction if confidence is high enough
+            grid_params = analysis.get('grid_params', {})
+            if analysis.get('confidence', 0) > 0.5 and 'direction' in grid_params:
+                gm = self._get_grid_manager()
+                new_dir = grid_params['direction']
+                if new_dir != gm.direction:
+                    gm.reset()
+                    gm.setup_grid(self.price, new_dir)
+                    self.vars['filled_levels'] = set()
+                    self.vars['prev_grid_direction'] = new_dir
+
+            logger.info(
+                f"AI analysis: trend={analysis.get('trend')}, "
+                f"confidence={analysis.get('confidence'):.2f}, "
+                f"recommendation={analysis.get('recommendation')}"
+            )
+        except Exception as e:
+            logger.warning(f"AI analysis failed: {e}")
+
+    def _run_ai_position_review(self):
+        """Run AI position review and act on recommendation."""
+        try:
+            side = 'long' if self.is_long else 'short'
+            entry = self.position.entry_price
+            pnl_pct = (self.price - entry) / entry * 100
+            if side == 'short':
+                pnl_pct = -pnl_pct
+
+            position_info = {
+                'entry_price': entry,
+                'current_price': self.price,
+                'side': side,
+                'qty': abs(self.position.qty),
+                'pnl_pct': pnl_pct,
+            }
+
+            # Map grid_direction to trend label for AI
+            direction = self.vars.get('prev_grid_direction', 'both')
+            trend_map = {'long_only': 'uptrend', 'short_only': 'downtrend', 'both': 'neutral'}
+            trend = trend_map.get(direction, 'neutral')
+
+            market_data = {
+                'rsi': ta.rsi(self.candles) if self.candles is not None else 50.0,
+                'atr': ta.atr(self.candles, self.hp['atr_period']) if self.candles is not None else 0.0,
+                'trend': trend,
+            }
+
+            decision = self._ai_mixin.ai_review_position(position_info, market_data)
+            logger.info(f"AI position review: {decision}")
+
+            if decision == 'STOP':
+                self.liquidate()
+        except Exception as e:
+            logger.warning(f"AI position review failed: {e}")
 
     # ==================== Helpers ====================
 
