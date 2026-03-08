@@ -8,6 +8,11 @@ font = "monospace"
 
 [server]
 headless = true
+runOnSave = false
+
+[client]
+showSidebarNavigation = false
+toolbarMode = "minimal"
 
 [browser]
 gatherUsageStats = false

@@ -32,6 +32,9 @@ CSS = """<style>
 /* Hide Streamlit chrome */
 #MainMenu, footer, .viewerBadge_container__r5tak { display: none; }
 [data-testid="collapsedControl"] { display: none; }
+[data-testid="stStatusWidget"] { display: none; }
+header[data-testid="stHeader"] .stActionButton { display: none; }
+button[kind="header"] { display: none; }
 
 /* Tabs */
 .stTabs [data-baseweb="tab-list"] {
