@@ -479,58 +479,6 @@ GitHub Actions runs `pytest tests/ -v --tb=short` on push/PR to main.
 Python 3.12 in CI. Dependencies from `binance-bot/requirements.txt`.
 
 ---
-
-## Priority Task List
-
-### P0 — Fix Broken Things
-
-1. **Wire StopLossManager into bot.py trading loop** — the code exists in `shared/risk/stop_loss.py`, it's imported and instantiated, but no methods are called during `_execute_trading()`. Add SL/TP checks after each trade.
-
-2. **Fix Discord retry stack overflow** — `shared/alerts/discord.py`: replace recursive `_send_webhook()` call on 429 with a loop + max retries (3-5).
-
-3. **Add LLM timeout** — `ai_grid.py` `_call_llm()`: add `timeout=30` or similar to prevent blocking the bot loop.
-
-4. **Add SMTP timeout** — `shared/alerts/email.py`: pass `timeout=30` to `aiosmtplib.send()`.
-
-5. **Fix f-string crash** — `shared/alerts/manager.py` ~line 248: handle `current_price=None`.
-
-### P1 — Complete Integrations
-
-6. **Wire Telegram into AlertManager** — or delete `telegram.py` if not needed.
-
-7. **Verify Prometheus metrics** — `bot.py` calls `self.trading_metrics.record_trade()` but verify the metrics endpoint actually serves non-zero data.
-
-8. **Wire StopLossManager** — call `check_stop_loss()` and `check_take_profit()` in the trading loop.
-
-### P2 — Code Quality
-
-9. **Replace `datetime.utcnow()`** with `datetime.now(timezone.utc)` — 7+ occurrences.
-
-10. **Use Decimal for financial amounts** — at minimum in `Trade.amount` and grid level amounts.
-
-11. **Fix LLM response parsing** — use JSON mode or structured output instead of line-by-line string parsing.
-
-12. **Add grid level cap** — `grid.py` `_create_opposite_level()` needs a max levels limit.
-
-13. **Fix Streamlit `width="stretch"`** — replace with `use_container_width=True` in 9 places.
-
-14. **Move risk params to config** — hardcoded `risk_per_trade=0.02`, `daily_loss_limit=0.05`, etc. in `bot.py` should come from `settings.py`.
-
-### P3 — Cleanup
-
-15. **Delete dead files:** `shared/reports/`, `shared/utils/`, `binance-bot/src/binance_bot/main.py`
-16. **Remove unused imports** — see AUDIT.md for full list
-17. **Remove unused deps:** `ta`, `aiosqlite` from requirements
-18. **Clean polymarket-bot** — implement or remove the skeleton
-
-### P4 — Strategic
-
-19. **Move to mainnet** — small capital ($50-100), real money testing
-20. **Add CHANGELOG.md** — track changes between versions
-21. **Add Alembic** — database migrations for schema changes
-
----
-
 ## Module Dependency Map
 
 ```
