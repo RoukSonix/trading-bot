@@ -182,11 +182,8 @@ class AIGridStrategy(Strategy):
                 'max': 240,
                 'default': 60,
             },
-            {
-                'name': 'ai_enabled',
-                'type': bool,
-                'default': True,
-            },
+            # ai_enabled is not optimizable (bool not supported by Jesse optimizer)
+            # Access via self.hp.get('ai_enabled', True) with default
             {
                 'name': 'min_grid_suitability',
                 'type': float,
@@ -201,11 +198,8 @@ class AIGridStrategy(Strategy):
                 'max': 1.0,
                 'default': 0.3,
             },
-            {
-                'name': 'alerts_enabled',
-                'type': bool,
-                'default': True,
-            },
+            # alerts_enabled is not optimizable (bool not supported by Jesse optimizer)
+            # Access via self.hp.get('alerts_enabled', True) with default
             {
                 'name': 'state_export_interval',
                 'type': int,
