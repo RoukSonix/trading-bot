@@ -8,7 +8,7 @@ routes = [
     {
         'exchange': 'Binance Perpetual Futures',
         'symbol': 'BTC-USDT',
-        'timeframe': '1m',
+        'timeframe': '1h',
         'strategy': 'AIGridStrategy',
     },
 ]
