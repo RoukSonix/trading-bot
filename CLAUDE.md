@@ -296,13 +296,13 @@ NautilusTrader was considered but **Jesse was chosen** as the trading framework 
 
 | Sprint | What | Status |
 |--------|------|--------|
-| M1 | Jesse Foundation (install, basic strategy, backtest) | ✅ Done (2026-03-08) |
-| M2 | Grid Logic Refinement (bidirectional, TP/SL, trailing, multi-TF) | Planned |
-| M3 | AI Integration (LLM agent as strategy mixin) | Planned |
-| M4 | Sentiment + Factors Integration | Planned |
-| M5 | Alerts + Dashboard Adaptation | Planned |
-| M6 | Live Trading Setup | Planned |
-| M7 | Cleanup + Optimization | Planned |
+| M1 | Jesse Foundation (install, basic strategy, backtest) | ✅ Done (2026-03-07) |
+| M2 | Grid Logic Refinement (bidirectional, TP/SL, trailing, multi-TF) | ✅ Done (2026-03-08) |
+| M3 | AI Integration (LLM agent as strategy mixin) | ✅ Done (2026-03-08) |
+| M4 | Sentiment + Factors Integration | ✅ Done (2026-03-08) |
+| M5 | Alerts + Dashboard Adaptation | ✅ Done (2026-03-08) |
+| M6 | Live Trading Setup | ✅ Done (2026-03-08) |
+| M7 | Cleanup + Optimization | ✅ Done (2026-03-09) |
 
 ---
 
