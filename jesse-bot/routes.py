@@ -7,7 +7,7 @@ Defines which strategy runs on which symbol/timeframe.
 routes = [
     {
         'exchange': 'Binance Perpetual Futures',
-        'symbol': 'BTC-USDT',
+        'symbol': 'ETH-USDT',
         'timeframe': '1h',
         'strategy': 'AIGridStrategy',
     },
@@ -17,7 +17,7 @@ routes = [
 data_routes = [
     {
         'exchange': 'Binance Perpetual Futures',
-        'symbol': 'BTC-USDT',
+        'symbol': 'ETH-USDT',
         'timeframe': '4h',
     },
 ]

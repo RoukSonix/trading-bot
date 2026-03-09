@@ -105,89 +105,90 @@ class AIGridStrategy(Strategy):
     def hyperparameters(self):
         """Strategy hyperparameters for optimization."""
         return [
+            # === Trial 2861 ETH-USDT 1h (Sharpe 2.67 OOS, +4.19% full backtest 15mo) ===
             {
                 'name': 'grid_levels_count',
                 'type': int,
                 'min': 3,
                 'max': 30,
-                'default': 10,
+                'default': 4,
             },
             {
                 'name': 'grid_spacing_pct',
                 'type': float,
                 'min': 0.3,
                 'max': 5.0,
-                'default': 1.5,
+                'default': 3.697,
             },
             {
                 'name': 'amount_pct',
                 'type': float,
                 'min': 1.0,
                 'max': 10.0,
-                'default': 5.0,  # % of balance per grid level
+                'default': 9.988,
             },
             {
                 'name': 'atr_period',
                 'type': int,
                 'min': 7,
                 'max': 28,
-                'default': 14,
+                'default': 25,
             },
             {
                 'name': 'tp_atr_mult',
                 'type': float,
                 'min': 1.0,
                 'max': 4.0,
-                'default': 2.0,
+                'default': 3.465,
             },
             {
                 'name': 'sl_atr_mult',
                 'type': float,
                 'min': 0.5,
                 'max': 3.0,
-                'default': 1.5,
+                'default': 2.744,
             },
             {
                 'name': 'trailing_activation_pct',
                 'type': float,
                 'min': 0.5,
                 'max': 5.0,
-                'default': 1.0,
+                'default': 3.904,
             },
             {
                 'name': 'trailing_distance_pct',
                 'type': float,
                 'min': 0.3,
                 'max': 3.0,
-                'default': 0.5,
+                'default': 0.765,
             },
             {
                 'name': 'trend_sma_fast',
                 'type': int,
                 'min': 5,
                 'max': 30,
-                'default': 10,
+                'default': 28,
             },
             {
                 'name': 'trend_sma_slow',
                 'type': int,
                 'min': 20,
                 'max': 100,
-                'default': 50,
+                'default': 63,
             },
             {
                 'name': 'max_total_levels',
                 'type': int,
                 'min': 10,
                 'max': 100,
-                'default': 40,
+                'default': 21,
             },
             {
                 'name': 'ai_review_interval',
                 'type': int,
                 'min': 15,
                 'max': 240,
-                'default': 60,
+                'default': 157,
             },
             # ai_enabled is not optimizable (bool not supported by Jesse optimizer)
             # Access via self.hp.get('ai_enabled', True) with default
@@ -196,14 +197,14 @@ class AIGridStrategy(Strategy):
                 'type': float,
                 'min': 0.1,
                 'max': 0.9,
-                'default': 0.3,
+                'default': 0.235,
             },
             {
                 'name': 'sentiment_weight',
                 'type': float,
                 'min': 0.0,
                 'max': 1.0,
-                'default': 0.3,
+                'default': 0.708,
             },
             # alerts_enabled is not optimizable (bool not supported by Jesse optimizer)
             # Access via self.hp.get('alerts_enabled', True) with default
@@ -212,7 +213,7 @@ class AIGridStrategy(Strategy):
                 'type': int,
                 'min': 5,
                 'max': 60,
-                'default': 10,
+                'default': 17,
             },
         ]
 
