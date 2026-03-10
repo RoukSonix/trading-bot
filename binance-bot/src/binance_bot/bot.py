@@ -230,8 +230,10 @@ class TradingBot:
         total_trades = paper.get("trades_count", 0)
         
         # Get from risk metrics if available
-        winning_trades = getattr(self.risk_metrics, 'winning_trades', 0)
-        losing_trades = getattr(self.risk_metrics, 'losing_trades', 0)
+        winning_trades_raw = getattr(self.risk_metrics, 'winning_trades', [])
+        losing_trades_raw = getattr(self.risk_metrics, 'losing_trades', [])
+        winning_trades = len(winning_trades_raw) if isinstance(winning_trades_raw, list) else int(winning_trades_raw)
+        losing_trades = len(losing_trades_raw) if isinstance(losing_trades_raw, list) else int(losing_trades_raw)
         total_pnl = end_balance - start_balance
         max_drawdown = getattr(self.risk_metrics, 'max_drawdown', 0) * 100
         

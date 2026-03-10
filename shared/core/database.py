@@ -111,9 +111,43 @@ class Position(Base):
 
 
 def init_db():
-    """Initialize database tables."""
+    """Initialize database tables and auto-migrate missing columns."""
     Base.metadata.create_all(engine)
+    _auto_migrate()
     logger.info(f"Database initialized: {DATABASE_URL}")
+
+
+def _auto_migrate():
+    """Add any missing columns from SQLAlchemy models to existing tables.
+    
+    Prevents 'no such column' errors when new columns are added to models
+    but the existing SQLite DB doesn't have them yet.
+    """
+    import sqlite3
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    
+    try:
+        conn = sqlite3.connect(db_path)
+        for table in Base.metadata.sorted_tables:
+            existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table.name})").fetchall()}
+            for col in table.columns:
+                if col.name not in existing:
+                    col_type = str(col.type)
+                    default = ""
+                    if col.default is not None and col.default.is_scalar:
+                        val = col.default.arg
+                        default = f" DEFAULT {repr(val)}" if isinstance(val, str) else f" DEFAULT {val}"
+                    elif col.nullable is not False:
+                        default = " DEFAULT NULL"
+                    try:
+                        conn.execute(f"ALTER TABLE {table.name} ADD COLUMN {col.name} {col_type}{default}")
+                        logger.info(f"Auto-migration: added column {table.name}.{col.name}")
+                    except Exception as e:
+                        logger.warning(f"Auto-migration skipped {table.name}.{col.name}: {e}")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.warning(f"Auto-migration error: {e}")
 
 
 def get_session() -> Session:

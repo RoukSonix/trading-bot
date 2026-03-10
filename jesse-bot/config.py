@@ -30,6 +30,7 @@ optimization = {
     'objective_function': 'sharpe',  # sharpe, calmar, sortino, omega
     'trials': 200,
     'best_candidates_count': 20,
+    'cpu_cores': 8,  # Use 8 of 16 available cores
 }
 
 # Logging settings
