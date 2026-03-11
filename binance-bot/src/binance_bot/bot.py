@@ -495,8 +495,13 @@ class TradingBot:
                     await self._maybe_ai_review(current_price)
                     
                 elif self.state == BotState.PAUSED:
-                    # Check if we should resume
+                    # Auto-resume: re-check entry conditions
                     await self._maybe_check_entry(current_price)
+                    
+                    # Also run AI review to override previous PAUSE decision
+                    # AI review has its own interval (~6 min), so this won't spam
+                    if self.state == BotState.PAUSED:
+                        await self._maybe_ai_review(current_price)
                 
                 # Periodic news sentiment fetch (~15 min)
                 await self._maybe_fetch_news()
@@ -716,6 +721,19 @@ class TradingBot:
                 current_price=current_price,
                 reason=f"AI decision: {review['reason']}",
             )
+            
+        elif review["action"] in ("CONTINUE", "HOLD"):
+            # If we were paused by AI, resume trading
+            if self.state == BotState.PAUSED:
+                logger.info(f"▶️ AI says {review['action']}: resuming from PAUSE")
+                self.state = BotState.TRADING
+                
+                await self.alert_manager.send_status_alert(
+                    status="trading",
+                    symbol=self.symbol,
+                    current_price=current_price,
+                    reason=f"AI resumed: {review['reason']}",
+                )
             
         elif review["action"] == "ADJUST":
             logger.info(f"🔧 AI adjusted grid: {review['reason']}")
