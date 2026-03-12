@@ -201,7 +201,7 @@ class FactorsMixin:
         delta = close.diff()
         gain = delta.where(delta > 0, 0.0).ewm(alpha=1/14, min_periods=14).mean()
         loss = (-delta.where(delta < 0, 0.0)).ewm(alpha=1/14, min_periods=14).mean()
-        rs = gain / loss
+        rs = gain / loss.replace(0, np.nan)
         rsi = 100 - (100 / (1 + rs))
         rsi_val = float(rsi.iloc[-1]) if not np.isnan(rsi.iloc[-1]) else 50.0
         result['rsi_14'] = rsi_val

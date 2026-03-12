@@ -177,10 +177,14 @@ class AIGridStrategy(GridStrategy):
         
         # Calculate spacing from optimized range and levels
         price_range = opt.upper_price - opt.lower_price
+        if opt.num_levels < 2 or current_price <= 0:
+            logger.warning(f"AI returned num_levels={opt.num_levels}, current_price={current_price}, using default grid")
+            self.setup_grid(current_price)
+            return
         spacing_pct = (price_range / opt.num_levels) / current_price * 100
-        
+
         # Update config
-        self.config.grid_levels = opt.num_levels // 2  # Levels per side
+        self.config.grid_levels = max(1, opt.num_levels // 2)  # Levels per side
         self.config.grid_spacing_pct = spacing_pct
         
         # Setup grid with center between optimized bounds

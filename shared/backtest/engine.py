@@ -353,7 +353,7 @@ class BacktestEngine:
 
         gross_profit = sum(wins) if wins else 0.0
         gross_loss = abs(sum(losses)) if losses else 0.0
-        profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else (float("inf") if gross_profit > 0 else 0.0)
+        profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else (9999.99 if gross_profit > 0 else 0.0)
 
         expectancy = (win_rate / 100 * avg_win) + ((1 - win_rate / 100) * avg_loss) if total_completed > 0 else 0.0
 

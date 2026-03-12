@@ -172,8 +172,9 @@ class FactorCalculator:
         avg_gain = gain.ewm(alpha=1 / 14, min_periods=14).mean()
         avg_loss = loss.ewm(alpha=1 / 14, min_periods=14).mean()
 
-        rs = avg_gain / avg_loss
+        rs = avg_gain / avg_loss.replace(0, np.nan)
         rsi = 100 - (100 / (1 + rs))
+        rsi = rsi.fillna(100.0)
 
         result.rsi_14 = float(rsi.iloc[-1]) if not np.isnan(rsi.iloc[-1]) else 50.0
 

@@ -156,7 +156,7 @@ class TradingAgent:
         ind_str = "\n".join([f"- {k}: {v}" for k, v in indicators.items()])
 
         # Calculate spread
-        spread = ((best_ask - best_bid) / best_bid) * 100
+        spread = ((best_ask - best_bid) / best_bid) * 100 if best_bid > 0 else 0.0
 
         prompt = MARKET_ANALYSIS_PROMPT.format(
             symbol=symbol,
@@ -466,5 +466,22 @@ class TradingAgent:
             return SignalDecision.WAIT, reason_text
 
 
-# Global agent instance
-trading_agent = TradingAgent()
+# Global agent instance — lazy proxy to defer instantiation
+_trading_agent = None
+
+
+def get_trading_agent() -> TradingAgent:
+    """Lazy factory for TradingAgent singleton."""
+    global _trading_agent
+    if _trading_agent is None:
+        _trading_agent = TradingAgent()
+    return _trading_agent
+
+
+class _LazyAgent:
+    """Proxy that defers TradingAgent() instantiation until first attribute access."""
+    def __getattr__(self, name):
+        return getattr(get_trading_agent(), name)
+
+
+trading_agent = _LazyAgent()

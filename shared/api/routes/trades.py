@@ -104,6 +104,12 @@ async def get_pnl_summary(
         # Try TradeLog first (has explicit pnl), fallback to Trade table
         logs = session.query(TradeLog).all()
         
+        # Initialize before if/else to avoid NameError
+        total_cost_buys = 0.0
+        total_cost_sells = 0.0
+        total_amount_buys = 0.0
+        total_amount_sells = 0.0
+
         if logs:
             realized_pnl = sum(float(log.pnl or 0) for log in logs)
             winning = [log for log in logs if float(log.pnl or 0) > 0]

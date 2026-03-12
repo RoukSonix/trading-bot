@@ -11,8 +11,9 @@ def rsi(df: pd.DataFrame, period: int = 14, column: str = "close") -> pd.Series:
     loss = -delta.where(delta < 0, 0)
     avg_gain = gain.ewm(alpha=1 / period, min_periods=period).mean()
     avg_loss = loss.ewm(alpha=1 / period, min_periods=period).mean()
-    rs = avg_gain / avg_loss
-    return 100 - (100 / (1 + rs))
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    result = 100 - (100 / (1 + rs))
+    return result.fillna(100.0)
 
 
 def macd(
@@ -40,7 +41,9 @@ def stochastic(
     """
     low_min = df["low"].rolling(k).min()
     high_max = df["high"].rolling(k).max()
-    stoch_k = 100 * (df["close"] - low_min) / (high_max - low_min)
+    denom = (high_max - low_min).replace(0, np.nan)
+    stoch_k = 100 * (df["close"] - low_min) / denom
+    stoch_k = stoch_k.fillna(50.0)
     stoch_d = stoch_k.rolling(d).mean()
     return pd.DataFrame({"stoch_k": stoch_k, "stoch_d": stoch_d}, index=df.index)
 
@@ -55,7 +58,8 @@ def stoch_rsi(
     rsi_val = rsi(df, period, column)
     rsi_min = rsi_val.rolling(period).min()
     rsi_max = rsi_val.rolling(period).max()
-    stoch_rsi_raw = (rsi_val - rsi_min) / (rsi_max - rsi_min)
+    stoch_rsi_raw = (rsi_val - rsi_min) / (rsi_max - rsi_min).replace(0, np.nan)
+    stoch_rsi_raw = stoch_rsi_raw.fillna(0.5)
     stoch_rsi_k = stoch_rsi_raw.rolling(k).mean()
     stoch_rsi_d = stoch_rsi_k.rolling(d).mean()
     return pd.DataFrame(
@@ -67,7 +71,9 @@ def williams_r(df: pd.DataFrame, period: int = 14) -> pd.Series:
     """Williams %R (-100 to 0)."""
     high_max = df["high"].rolling(period).max()
     low_min = df["low"].rolling(period).min()
-    return -100 * (high_max - df["close"]) / (high_max - low_min)
+    denom = (high_max - low_min).replace(0, np.nan)
+    result = -100 * (high_max - df["close"]) / denom
+    return result.fillna(-50.0)
 
 
 def mfi(df: pd.DataFrame, period: int = 14) -> pd.Series:
@@ -81,8 +87,9 @@ def mfi(df: pd.DataFrame, period: int = 14) -> pd.Series:
     positive_mf = positive_flow.rolling(period).sum()
     negative_mf = negative_flow.rolling(period).sum()
 
-    money_ratio = positive_mf / negative_mf
-    return 100 - (100 / (1 + money_ratio))
+    money_ratio = positive_mf / negative_mf.replace(0, np.nan)
+    result = 100 - (100 / (1 + money_ratio))
+    return result.fillna(100.0)
 
 
 def roc(df: pd.DataFrame, period: int = 12, column: str = "close") -> pd.Series:
@@ -101,7 +108,8 @@ def tsi(
     double_smoothed_abs = delta.abs().ewm(span=long, adjust=False).mean().ewm(
         span=short, adjust=False
     ).mean()
-    return 100 * double_smoothed / double_smoothed_abs
+    result = 100 * double_smoothed / double_smoothed_abs.replace(0, np.nan)
+    return result.fillna(0.0)
 
 
 def ultimate(

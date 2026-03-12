@@ -167,6 +167,8 @@ class SentimentAnalyzer:
             if pub_str:
                 try:
                     pub_dt = datetime.fromisoformat(pub_str)
+                    if pub_dt.tzinfo is None:
+                        pub_dt = pub_dt.replace(tzinfo=timezone.utc)
                     if pub_dt < cutoff:
                         continue
                 except (ValueError, TypeError):

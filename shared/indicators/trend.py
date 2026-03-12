@@ -66,7 +66,8 @@ def vwap(df: pd.DataFrame) -> pd.Series:
     typical_price = (df["high"] + df["low"] + df["close"]) / 3
     cum_tp_vol = (typical_price * df["volume"]).cumsum()
     cum_vol = df["volume"].cumsum()
-    return cum_tp_vol / cum_vol
+    result = cum_tp_vol / cum_vol.replace(0, np.nan)
+    return result.ffill()
 
 
 def supertrend(
@@ -237,7 +238,9 @@ def adx(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
     plus_di = 100 * plus_dm.ewm(alpha=1 / period, min_periods=period).mean() / atr
     minus_di = 100 * minus_dm.ewm(alpha=1 / period, min_periods=period).mean() / atr
 
-    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+    di_sum = (plus_di + minus_di).replace(0, np.nan)
+    dx = 100 * (plus_di - minus_di).abs() / di_sum
+    dx = dx.fillna(0.0)
     adx_val = dx.ewm(alpha=1 / period, min_periods=period).mean()
 
     return pd.DataFrame({
@@ -275,4 +278,6 @@ def cci(df: pd.DataFrame, period: int = 20) -> pd.Series:
     mad = typical_price.rolling(period).apply(
         lambda x: np.abs(x - x.mean()).mean(), raw=True
     )
-    return (typical_price - sma_tp) / (0.015 * mad)
+    denom = (0.015 * mad).replace(0, np.nan)
+    result = (typical_price - sma_tp) / denom
+    return result.fillna(0.0)

@@ -79,10 +79,11 @@ class BotState:
     def from_dict(cls, data: dict) -> "BotState":
         """Create BotState from dictionary."""
         # Handle nested objects
-        grid_levels = data.pop("grid_levels", [])
-        positions = data.pop("positions", [])
-        
-        state = cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+        grid_levels = data.get("grid_levels", [])
+        positions = data.get("positions", [])
+
+        excluded = {"grid_levels", "positions"}
+        state = cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__ and k not in excluded})
         state.grid_levels = grid_levels
         state.positions = positions
         return state
