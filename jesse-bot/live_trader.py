@@ -13,6 +13,7 @@ import os
 import sys
 import time
 import traceback
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -205,6 +206,7 @@ class LiveTrader:
         self.total_trades: int = 0
         self.total_pnl: float = 0.0
         self.filled_order_ids: set[str] = set()
+        self._filled_order_ids_deque: deque[str] = deque(maxlen=500)
         self.stopped: bool = False
 
         # Map grid level id -> exchange order id
@@ -388,6 +390,7 @@ class LiveTrader:
                 continue  # Already processed
 
             self.filled_order_ids.add(trade_id)
+            self._filled_order_ids_deque.append(trade_id)
 
             side = trade["side"]
             fill_price = float(trade["price"])
@@ -447,6 +450,13 @@ class LiveTrader:
                     {"name": "Trades Today", "value": str(self.trades_today), "inline": True},
                 ],
             )])
+
+        self._prune_filled_order_ids()
+
+    def _prune_filled_order_ids(self) -> None:
+        """Keep filled_order_ids bounded to last 500 trades."""
+        if len(self.filled_order_ids) > 500:
+            self.filled_order_ids = set(self._filled_order_ids_deque)
 
     # ── Daily Reset ──────────────────────────────────────────────────────
 
@@ -606,8 +616,29 @@ class LiveTrader:
             time.sleep(LOOP_INTERVAL_SECONDS)
             return
 
-        # Setup / refresh grid
-        levels = self.setup_grid(price, atr, closes)
+        # Only rebuild grid when: (1) no grid exists, or (2) trend direction changed
+        trend = detect_trend(
+            closes,
+            fast_period=PARAMS["trend_sma_fast"],
+            slow_period=PARAMS["trend_sma_slow"],
+        )
+        if trend == "uptrend":
+            new_direction = "long_only"
+        elif trend == "downtrend":
+            new_direction = "short_only"
+        else:
+            new_direction = "both"
+
+        if not self.grid.levels or new_direction != self.grid.direction:
+            log.info(f"Grid rebuild: direction changed {self.grid.direction} → {new_direction}")
+            self.level_order_map = {}
+            levels = self.setup_grid(price, atr, closes)
+        else:
+            levels = self.grid.levels
+            log.info(
+                f"Grid preserved: direction={self.grid.direction}, "
+                f"filled={self.grid.filled_count}/{len(levels)}"
+            )
 
         # Sync orders with grid
         self.sync_orders(levels, price, balance, atr)

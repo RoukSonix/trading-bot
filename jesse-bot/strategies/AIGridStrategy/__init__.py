@@ -521,7 +521,8 @@ class AIGridStrategy(Strategy):
                 indicators['sentiment_score'] = sentiment.get('score', 0.0)
                 indicators['sentiment_weight'] = self.hp.get('sentiment_weight', 0.3)
 
-            analysis = self._ai_mixin.ai_analyze_market(candle_data, indicators)
+            ai_symbol = self.symbol.replace("-", "")  # "ETH-USDT" → "ETHUSDT"
+            analysis = self._ai_mixin.ai_analyze_market(candle_data, indicators, symbol=ai_symbol)
             self.vars['last_ai_analysis'] = analysis
 
             # Apply AI-suggested direction if confidence is high enough
@@ -577,7 +578,12 @@ class AIGridStrategy(Strategy):
                 'trend': trend,
             }
 
-            decision = self._ai_mixin.ai_review_position(position_info, market_data)
+            ai_symbol = self.symbol.replace("-", "")  # "ETH-USDT" → "ETHUSDT"
+            decision = self._ai_mixin.ai_review_position(
+                position_info, market_data,
+                symbol=ai_symbol,
+                total_balance=self.balance,
+            )
             logger.info(f"AI position review: {decision}")
 
             if decision == 'STOP':

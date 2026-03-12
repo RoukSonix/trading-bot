@@ -58,6 +58,7 @@ class AIMixin:
         self,
         candles: list[list[float]],
         indicators: dict[str, float],
+        symbol: str = "BTCUSDT",
     ) -> dict:
         """Analyze market conditions using AI or fallback.
 
@@ -72,7 +73,7 @@ class AIMixin:
         if not self.ai_available:
             return self._fallback.analyze_market(candles, indicators)
 
-        coro = self._ai_analyze_market_async(candles, indicators)
+        coro = self._ai_analyze_market_async(candles, indicators, symbol=symbol)
         try:
             return self._run_ai_with_timeout(coro)
         except Exception as e:
@@ -84,6 +85,8 @@ class AIMixin:
         self,
         position_info: dict,
         market_data: dict,
+        symbol: str = "BTCUSDT",
+        total_balance: float = 10000.0,
     ) -> str:
         """Review open position using AI or fallback.
 
@@ -97,7 +100,9 @@ class AIMixin:
         if not self.ai_available:
             return self._fallback.review_position(position_info, market_data)
 
-        coro = self._ai_review_position_async(position_info, market_data)
+        coro = self._ai_review_position_async(
+            position_info, market_data, symbol=symbol, total_balance=total_balance,
+        )
         try:
             return self._run_ai_with_timeout(coro)
         except Exception as e:
@@ -109,6 +114,7 @@ class AIMixin:
         self,
         current_grid: dict,
         market_analysis: dict,
+        symbol: str = "BTCUSDT",
     ) -> dict:
         """Optimize grid parameters using AI or fallback.
 
@@ -122,7 +128,7 @@ class AIMixin:
         if not self.ai_available:
             return self._fallback.optimize_grid(current_grid, market_analysis)
 
-        coro = self._ai_optimize_grid_async(current_grid, market_analysis)
+        coro = self._ai_optimize_grid_async(current_grid, market_analysis, symbol=symbol)
         try:
             return self._run_ai_with_timeout(coro)
         except Exception as e:
@@ -136,6 +142,7 @@ class AIMixin:
         self,
         candles: list[list[float]],
         indicators: dict[str, float],
+        symbol: str = "BTCUSDT",
     ) -> dict:
         """Call TradingAgent.analyze_market() and normalize response."""
         closes = [c[4] for c in candles] if candles else []
@@ -145,7 +152,7 @@ class AIMixin:
         change_24h = ((current_price - closes[-24]) / closes[-24] * 100) if len(closes) >= 24 else 0.0
 
         analysis: MarketAnalysis = await self._ai_agent.analyze_market(
-            symbol="BTCUSDT",
+            symbol=symbol,
             current_price=current_price,
             high_24h=high_24h,
             low_24h=low_24h,
@@ -186,28 +193,34 @@ class AIMixin:
         self,
         position_info: dict,
         market_data: dict,
+        symbol: str = "BTCUSDT",
+        total_balance: float = 10000.0,
     ) -> str:
         """Call TradingAgent.assess_risk() and map to review action."""
         current_price = position_info.get('current_price', 0.0)
         entry_price = position_info.get('entry_price', current_price)
         side = position_info.get('side', 'long')
         pnl_pct = position_info.get('pnl_pct', 0.0)
+        qty = position_info.get('qty', 0.0)
+        position_value = current_price * qty
+        position_pct = (position_value / total_balance * 100) if total_balance > 0 else 0.0
+        base_currency = symbol.replace("USDT", "") if symbol.endswith("USDT") else symbol[:3]
 
         assessment = await self._ai_agent.assess_risk(
-            symbol="BTCUSDT",
+            symbol=symbol,
             side=side.upper(),
             entry_price=entry_price,
             current_price=current_price,
-            position_size=position_info.get('qty', 0.0),
-            base_currency="BTC",
-            position_value=current_price * position_info.get('qty', 0.0),
+            position_size=qty,
+            base_currency=base_currency,
+            position_value=position_value,
             unrealized_pnl=pnl_pct,
             pnl_percent=pnl_pct,
             volatility=market_data.get('volatility', 0.0),
             rsi=market_data.get('rsi', 50.0),
             trend=market_data.get('trend', 'sideways'),
-            total_balance=10000.0,
-            position_pct=10.0,
+            total_balance=total_balance,
+            position_pct=position_pct,
         )
 
         action_map = {
@@ -222,6 +235,7 @@ class AIMixin:
         self,
         current_grid: dict,
         market_analysis: dict,
+        symbol: str = "BTCUSDT",
     ) -> dict:
         """Call TradingAgent.optimize_grid() and normalize response."""
         center = current_grid.get('center', 100000.0)
@@ -232,7 +246,7 @@ class AIMixin:
         upper = center * (1 + spacing / 100 * levels)
 
         optimization: GridOptimization = await self._ai_agent.optimize_grid(
-            symbol="BTCUSDT",
+            symbol=symbol,
             current_price=center,
             atr=center * 0.01,
             bb_lower=lower,
