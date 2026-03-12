@@ -1,5 +1,7 @@
 """Tests for sentiment analysis module."""
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from shared.vector_db.sentiment import (
@@ -7,6 +9,11 @@ from shared.vector_db.sentiment import (
     SentimentLevel,
     SentimentResult,
 )
+
+
+def _recent_timestamp(hours_ago: int = 1) -> str:
+    """Return an ISO timestamp from `hours_ago` hours before now."""
+    return (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).isoformat()
 
 
 class TestSentimentAnalyzer:
@@ -48,11 +55,11 @@ class TestSentimentAnalyzer:
         articles = [
             {
                 "text": "Bitcoin rally surges as institutional adoption increases",
-                "metadata": {"title": "BTC Rally", "published_at": "2026-03-05T10:00:00"},
+                "metadata": {"title": "BTC Rally", "published_at": _recent_timestamp(1)},
             },
             {
                 "text": "Ethereum breakout signals bullish momentum",
-                "metadata": {"title": "ETH Breakout", "published_at": "2026-03-05T09:00:00"},
+                "metadata": {"title": "ETH Breakout", "published_at": _recent_timestamp(2)},
             },
         ]
         result = self.analyzer.analyze_articles(articles, max_age_hours=48)
@@ -65,11 +72,11 @@ class TestSentimentAnalyzer:
         articles = [
             {
                 "text": "Crypto crash liquidation wave wipes out billions",
-                "metadata": {"title": "Crash", "published_at": "2026-03-05T10:00:00"},
+                "metadata": {"title": "Crash", "published_at": _recent_timestamp(1)},
             },
             {
                 "text": "Bitcoin plunges amid panic selling and fear",
-                "metadata": {"title": "Plunge", "published_at": "2026-03-05T09:00:00"},
+                "metadata": {"title": "Plunge", "published_at": _recent_timestamp(2)},
             },
         ]
         result = self.analyzer.analyze_articles(articles, max_age_hours=48)

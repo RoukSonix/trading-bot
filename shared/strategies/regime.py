@@ -34,7 +34,7 @@ class MarketRegimeDetector:
         self,
         adx_threshold: float = 25.0,
         vol_lookback: int = 20,
-        confirmation_count: int = 5,
+        confirmation_count: int = 1,
         confidence_threshold: float = 0.65,
         history_size: int = 20,
     ):
@@ -49,6 +49,7 @@ class MarketRegimeDetector:
         self._candidate_count = 0
         self._regime_history: deque[MarketRegime] = deque(maxlen=history_size)
         self._last_confidence = 0.0
+        self._initialized = False  # First detection skips hysteresis
 
     @property
     def current_regime(self) -> MarketRegime:
@@ -72,6 +73,16 @@ class MarketRegimeDetector:
         raw_regime, confidence = self._detect_raw(candles, indicators)
         self._last_confidence = confidence
         self._regime_history.append(raw_regime)
+
+        # First detection: set regime immediately without hysteresis
+        if not self._initialized:
+            self._initialized = True
+            self._current_regime = raw_regime
+            logger.info(
+                f"Initial regime set: {raw_regime.value} "
+                f"(confidence={confidence:.0%})"
+            )
+            return self._current_regime
 
         # --- Hysteresis logic ---
         if raw_regime != self._current_regime:
