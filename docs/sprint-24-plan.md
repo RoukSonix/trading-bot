@@ -2,7 +2,8 @@
 
 > **Date:** 2026-03-12
 > **Branch:** `feature/sprint-24-p0-fixes`
-> **Source:** AUDIT_V2.md (28 P0 issues, 23 in Sprint 24 scope)
+> **Source:** AUDIT_V2.md (28 P0 issues, 26 in Sprint 24 scope)
+> **VALIDATION NOTE:** Header originally said "23 in Sprint 24 scope" but the plan actually covers 26 P0 issues. Count corrected.
 > **Goal:** Eliminate all runtime crashes and data corruption bugs
 
 ---
@@ -14,10 +15,12 @@ Issues are grouped into 5 phases, ordered by dependency (foundational fixes firs
 | Phase | Focus | Issues | Rationale |
 |-------|-------|--------|-----------|
 | 1 | Foundation (config, DB, state) | P0-CORE-1, P0-CORE-2, P0-CORE-3 | Everything imports `shared.config` and `shared.core` |
-| 2 | Shared indicators | P0-CORE-4, P0-STRAT-1, P0-STRAT-2 | Indicators are used by strategies, backtest, and AI |
+| 2 | Shared indicators + factors | P0-CORE-4, P0-STRAT-1, P0-STRAT-2, **P0-FACTORS-1** | Indicators are used by strategies, backtest, and AI |
 | 3 | Shared services (AI, alerts, risk, backtest, vector_db) | P0-AI-1, P0-AI-2, P0-ALERT-1, P0-ALERT-2, P0-RISK-1, P0-RISK-2, P0-BACK-1, P0-VDB-1, P0-VDB-2 | Services depend on Phase 1 & 2 |
 | 4 | Bot & strategies | P0-BOT-1..4, P0-STRAT-3..6 | Bot depends on all shared modules |
 | 5 | Jesse bot | P0-JESSE-1..3 | Independent codebase, can be done last |
+
+> **VALIDATION NOTE:** Added P0-FACTORS-1 to Phase 2. The audit P0-STRAT-1 explicitly mentions `shared/factors/factor_calculator.py:175` as having the same RSI division-by-zero bug, but the original plan omitted this file.
 
 ---
 
@@ -88,6 +91,8 @@ def test_settings_with_env_vars(monkeypatch):
 ```
 
 **Risk:** Low. Existing code that calls `settings.binance_api_key` still works. Only difference: empty string instead of crash when keys are absent.
+
+> **VALIDATION NOTE:** The `validate_trading_config()` method must be called in `bot.py:start()` before any exchange operations, otherwise the bot could silently proceed with empty API keys. Add call at the top of the `start()` method: `settings.validate_trading_config()`.
 
 ---
 
@@ -328,11 +333,39 @@ dx = dx.fillna(0.0)
 
 ---
 
+### P0-FACTORS-1: Division by zero in RSI (factor_calculator.py) — VALIDATION NOTE: MISSING FROM ORIGINAL PLAN
+
+> **VALIDATION NOTE:** This fix was missing from the original plan. The audit P0-STRAT-1 explicitly mentions `shared/factors/factor_calculator.py:175` as affected. Verified: line 175 contains `rs = avg_gain / avg_loss` with no zero guard.
+
+**File:** `shared/factors/factor_calculator.py:175`
+```python
+rs = avg_gain / avg_loss
+```
+
+**Fix:**
+```python
+# BEFORE:
+rs = avg_gain / avg_loss
+rsi = 100 - (100 / (1 + rs))
+
+# AFTER:
+rs = avg_gain / avg_loss.replace(0, np.nan)
+rsi = 100 - (100 / (1 + rs))
+rsi = rsi.fillna(100.0)  # no losses = RSI 100
+```
+
+**Test:** Same pattern as P0-CORE-4 RSI test.
+
+**Risk:** Low. Same fix pattern as P0-STRAT-1 and P0-CORE-4.
+
+---
+
 ## Phase 3: Shared Service Fixes
 
 ### P0-AI-1: ZeroDivisionError when `best_bid=0`
 
-**File:** `shared/ai/agent.py:158`
+**File:** `shared/ai/agent.py:159`
+> **VALIDATION NOTE:** Line number corrected from 158 to 159.
 ```python
 spread = ((best_ask - best_bid) / best_bid) * 100
 ```
@@ -448,20 +481,22 @@ def test_alert_config_from_dict_with_all_valid_keys():
 target_hour, target_minute = map(int, self.config.daily_summary_time.split(":"))
 ```
 
-**Fix — validation in AlertConfig.__init__ or __post_init__:**
+**Fix — validation at the end of AlertConfig.__init__:**
+
+> **VALIDATION NOTE:** Original plan proposed `__post_init__` but AlertConfig is a regular class (not a dataclass), so `__post_init__` is never called. Fix corrected to add validation at the end of `__init__` (after line 48).
+
 ```python
-# Add validation to AlertConfig (near line 30-60):
-def __post_init__(self):
-    # Validate daily_summary_time format
-    try:
-        parts = self.daily_summary_time.split(":")
-        if len(parts) != 2:
-            raise ValueError
-        h, m = int(parts[0]), int(parts[1])
-        if not (0 <= h <= 23 and 0 <= m <= 59):
-            raise ValueError
-    except (ValueError, AttributeError):
-        self.daily_summary_time = "20:00"  # safe default
+# Add at the end of AlertConfig.__init__ (after line 48):
+        # Validate daily_summary_time format
+        try:
+            parts = self.daily_summary_time.split(":")
+            if len(parts) != 2:
+                raise ValueError
+            h, m = int(parts[0]), int(parts[1])
+            if not (0 <= h <= 23 and 0 <= m <= 59):
+                raise ValueError
+        except (ValueError, AttributeError):
+            self.daily_summary_time = "20:00"  # safe default
 ```
 
 **Fix — defensive parse in _daily_summary_loop (line 414):**
@@ -489,7 +524,9 @@ def test_alert_config_valid_summary_time():
 
 def test_alert_config_three_part_time():
     config = AlertConfig(daily_summary_time="20:00:00")
-    assert config.daily_summary_time == "20:00"  # normalized
+    assert config.daily_summary_time == "20:00"  # falls back to default
+    # VALIDATION NOTE: "20:00:00" has 3 parts, fails len(parts) != 2 check,
+    # so falls back to "20:00" default. This is correct behavior.
 ```
 
 **Risk:** Low. Invalid config gets a safe default instead of infinite crash loop.
@@ -775,9 +812,10 @@ async def test_bot_start_survives_network_error(mocker):
 
 ### P0-BOT-3: `ticker["last"]` can be `None`
 
-**File:** `binance-bot/src/binance_bot/bot.py:296,468`
+**File:** `binance-bot/src/binance_bot/bot.py:297,469`
+> **VALIDATION NOTE:** Line numbers corrected: 296→297, 468→469. Line 468 is the `get_ticker()` call; the `ticker["last"]` access is at line 469. Same +1 offset for the startup path (line 297).
 
-**Fix at line 468 (main loop — most critical):**
+**Fix at line 469 (main loop — most critical):**
 ```python
 # BEFORE:
 ticker = exchange_client.get_ticker(self.symbol)
@@ -792,7 +830,7 @@ if current_price <= 0:
     continue
 ```
 
-**Fix at line 296 (startup alert — less critical):**
+**Fix at line 297 (startup alert — less critical):**
 ```python
 # BEFORE:
 current_price=ticker["last"],
@@ -816,7 +854,8 @@ async def test_bot_handles_none_ticker_last(mocker):
 
 ### P0-BOT-4: `_print_stats()` KeyError on `paper_trading`
 
-**File:** `binance-bot/src/binance_bot/bot.py:803`
+**File:** `binance-bot/src/binance_bot/bot.py:801`
+> **VALIDATION NOTE:** Line number corrected from 803 to 801.
 ```python
 paper = status["paper_trading"]
 ```
@@ -859,12 +898,16 @@ self.config.grid_levels = opt.num_levels // 2
 
 # AFTER:
 price_range = opt.upper_price - opt.lower_price
-if opt.num_levels < 2:
-    logger.warning(f"AI returned num_levels={opt.num_levels}, using default grid")
+if opt.num_levels < 2 or current_price <= 0:
+    logger.warning(f"AI returned num_levels={opt.num_levels}, current_price={current_price}, using default grid")
     self.setup_grid(current_price)
     return
 spacing_pct = (price_range / opt.num_levels) / current_price * 100
 self.config.grid_levels = max(1, opt.num_levels // 2)
+
+# VALIDATION NOTE: Added `current_price <= 0` guard. Line 180 also divides by
+# current_price, which would crash if price is 0 (e.g., ticker returned None
+# and was defaulted to 0 by the P0-BOT-3 fix).
 ```
 
 **Test:**
@@ -1101,7 +1144,8 @@ def test_trailing_stop_update_before_start():
 
 ### P0-JESSE-3: Division by zero in RSI (factors_mixin)
 
-**File:** `jesse-bot/strategies/AIGridStrategy/factors_mixin.py:203`
+**File:** `jesse-bot/strategies/AIGridStrategy/factors_mixin.py:204`
+> **VALIDATION NOTE:** Line number corrected from 203 to 204.
 ```python
 rs = gain / loss  # loss can be zero
 ```
@@ -1138,10 +1182,11 @@ def test_factors_rsi_no_losses():
 | **Very Low** | All others | Simple null checks, `.get()`, `try/finally`, `.replace(0, nan)` |
 
 ### Key risks to watch:
-1. **P0-CORE-1 (Settings lazy init):** If any module depends on `settings` being fully initialized at import time, the lazy proxy could cause import-order issues. Mitigated by using empty defaults instead.
+1. **P0-CORE-1 (Settings lazy init):** If any module depends on `settings` being fully initialized at import time, the lazy proxy could cause import-order issues. Mitigated by using empty defaults instead. **VALIDATION NOTE:** Must add `validate_trading_config()` call in `bot.py:start()` to catch missing keys before exchange operations.
 2. **P0-CORE-4 (Indicator defaults):** `fillna()` values for indicators must produce "neutral" trading signals. Wrong defaults could produce false signals.
 3. **P0-BOT-1 (asyncio.run):** The new event loop pattern must be tested in Docker with signal handling.
 4. **P0-JESSE-1 (Column index):** Correcting close vs high will change all grid direction decisions in jesse-bot. Must validate with backtests.
+5. **VALIDATION NOTE — Cross-fix interaction:** P0-BOT-3 defaults `current_price` to 0 when ticker returns None. Downstream code (P0-STRAT-3 `_apply_optimization`) divides by `current_price`. The `continue` in the main loop prevents this, but any code path that bypasses the `continue` guard must also check `current_price > 0`.
 
 ---
 
@@ -1150,23 +1195,64 @@ def test_factors_rsi_no_losses():
 ```
 tests/
 ├── test_sprint24_core.py        # P0-CORE-1,2,3 tests
-├── test_sprint24_indicators.py  # P0-CORE-4, P0-STRAT-1,2 tests
+├── test_sprint24_indicators.py  # P0-CORE-4, P0-STRAT-1,2, P0-FACTORS-1 tests
 ├── test_sprint24_services.py    # P0-AI-1,2, P0-ALERT-1,2, P0-RISK-1,2, P0-BACK-1, P0-VDB-1,2 tests
 ├── test_sprint24_bot.py         # P0-BOT-1,2,3,4, P0-STRAT-3,4,5,6 tests
 └── test_sprint24_jesse.py       # P0-JESSE-1,2,3 tests
 ```
 
-**Estimated test count:** ~35 tests
-**Estimated lines changed:** ~200 (fixes) + ~400 (tests)
+**Estimated test count:** ~37 tests (VALIDATION NOTE: +2 for P0-FACTORS-1)
+**Estimated lines changed:** ~210 (fixes) + ~420 (tests)
 
 ---
 
 ## Checklist
 
 - [ ] Phase 1: Foundation (P0-CORE-1, P0-CORE-2, P0-CORE-3)
-- [ ] Phase 2: Indicators (P0-CORE-4, P0-STRAT-1, P0-STRAT-2)
+- [ ] Phase 2: Indicators + Factors (P0-CORE-4, P0-STRAT-1, P0-STRAT-2, P0-FACTORS-1)
 - [ ] Phase 3: Services (P0-AI-1, P0-AI-2, P0-ALERT-1, P0-ALERT-2, P0-RISK-1, P0-RISK-2, P0-BACK-1, P0-VDB-1, P0-VDB-2)
 - [ ] Phase 4: Bot & Strategies (P0-BOT-1..4, P0-STRAT-3..6)
 - [ ] Phase 5: Jesse (P0-JESSE-1..3)
 - [ ] All tests passing (`pytest tests/ -v`)
 - [ ] Update `docs/STATUS.md`
+
+---
+
+## Validation Summary
+
+> **Validated by:** Validation Agent (Step 2 of 4-Step Pipeline)
+> **Date:** 2026-03-12
+> **Result:** Plan APPROVED with corrections applied
+
+### Corrections Applied
+
+| # | Issue | Severity | Description |
+|---|-------|----------|-------------|
+| V1 | Missing fix: `shared/factors/factor_calculator.py:175` | **High** | RSI division by zero — audit P0-STRAT-1 mentions this file but it was omitted from the plan. Added as P0-FACTORS-1 in Phase 2. |
+| V2 | P0-ALERT-2: `__post_init__` on regular class | **High** | AlertConfig is a regular class, not a dataclass. `__post_init__` is never called. Corrected to add validation at end of `__init__`. |
+| V3 | P0-STRAT-3: Missing `current_price=0` guard | **Medium** | Line 180 also divides by `current_price`. Added guard to handle zero price (cross-fix interaction with P0-BOT-3). |
+| V4 | P0-CORE-1: Missing `validate_trading_config()` caller | **Medium** | Plan proposes validation method but doesn't specify where to call it. Added note: call in `bot.py:start()`. |
+| V5 | Header count: 23 → 26 | **Low** | Plan actually covers 26 P0 issues, not 23. Corrected. |
+| V6 | P0-BOT-3 line numbers: 296,468 → 297,469 | **Low** | Off by 1 — `ticker["last"]` access is on the line after `get_ticker()` call. |
+| V7 | P0-BOT-4 line number: 803 → 801 | **Low** | Off by 2. |
+| V8 | P0-AI-1 line number: 158 → 159 | **Low** | Off by 1. |
+| V9 | P0-JESSE-3 line number: 203 → 204 | **Low** | Off by 1. |
+
+### Source File Verification
+
+All 26 source file locations were verified against actual code. Every proposed fix pattern was confirmed to be applicable to the actual code found at those locations.
+
+### Dependency Analysis
+
+No conflicts found between fixes. Phase ordering is correct:
+- Phase 1 (config/DB/state) is foundational — all other code imports these
+- Phase 2 (indicators) depends on Phase 1 (indicators use settings)
+- Phase 3 (services) depends on Phase 1 & 2
+- Phase 4 (bot) depends on all shared modules
+- Phase 5 (jesse) is independent
+
+### Cross-Fix Interactions
+
+1. **P0-BOT-3 → P0-STRAT-3:** Bot defaults `current_price=0` on None ticker. `_apply_optimization` divides by `current_price`. The main loop `continue` guard prevents this, but the additional guard added in V3 provides defense-in-depth.
+2. **P0-CORE-1 → P0-AI-2:** Both use lazy initialization pattern. No conflict — they're independent modules.
+3. **P0-CORE-1 → bot.py:** Empty API key defaults require explicit validation before trading. V4 addresses this.
