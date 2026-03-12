@@ -88,6 +88,11 @@ else:
 
 Also update `sync_orders()` call on line 613 — it already takes `levels` param, no change needed.
 
+> **VALIDATION NOTE (2026-03-12):**
+> 1. **Redundant trend detection** — The proposed fix computes `detect_trend()` in `_loop_iteration()` to decide whether to rebuild, then `self.setup_grid()` (line 264-277) computes it AGAIN internally. Both calls are deterministic with the same inputs so no correctness issue, but it's wasteful. Consider refactoring `setup_grid()` to accept an optional pre-computed `direction` param to avoid the double call.
+> 2. **Stale `level_order_map` on rebuild** — When grid is rebuilt due to direction change, `self.level_order_map` retains entries keyed by old level IDs (e.g., `buy_1`). Since `setup_grid()` in `grid_logic.py` reuses the same naming scheme (`buy_1`, `sell_1`, ...), the new `buy_1` will be incorrectly matched to the OLD exchange order in `sync_orders()` line 344 (`if level["id"] in self.level_order_map`). This causes a 1-iteration (1-hour) delay before new orders are placed: the old order gets cancelled (line 325-336), but `level_order_map` isn't updated until the next iteration's cleanup (line 317-322). **FIX: Add `self.level_order_map = {}` immediately before the `self.setup_grid()` call in the rebuild branch.**
+> 3. Line numbers verified ✅ — line 610 matches exactly.
+
 **Test:**
 ```python
 class TestLiveTraderGridPersistence:
@@ -233,6 +238,10 @@ class TestFilledOrderIdsBounded:
         # Recent trade should still be recognized
         assert "trade_599" in live_trader.filled_order_ids
 ```
+
+> **VALIDATION NOTE (2026-03-12):**
+> 1. Line numbers verified ✅ — line 390 and 207 match exactly.
+> 2. **Import placement** — Move `from collections import deque` to file-level imports (lines 10-17), not inside `__init__`. Putting imports inside methods/constructors is non-standard and makes dependencies harder to track.
 
 **Risk:** Low. The deque maxlen of 500 is conservative — `fetch_my_trades(limit=50)` only returns
 50 trades per call, so 500 gives 10x buffer. Trades older than 500 fills ago are extremely unlikely
@@ -386,6 +395,11 @@ class TestCrossedLevelReturnsLastFilled:
         assert gm2.get_crossed_buy_level_price() == gm.get_crossed_buy_level_price()
 ```
 
+> **VALIDATION NOTE (2026-03-12):**
+> 1. Line numbers verified ✅ — lines 110-115 and 117-122 match exactly. Minor discrepancy: plan says `reset()` at "line 127" but the function definition is at line 124 (body at 126-128). No impact on fix.
+> 2. Fix is correct — `_last_filled_buy/sell` tracking is the right approach. `check_buy_signal` iterates levels and fills the first unfilled level whose price is crossed, so tracking which one was last filled is necessary.
+> 3. `to_dict`/`from_dict` serialization additions verified against actual code (lines 163-195) — the proposed additions fit cleanly.
+
 **Risk:** Low. The existing tests in `test_strategy.py::TestCrossedLevelPrices` test single-fill
 scenarios which still pass (first fill = last fill when there's only one). The fix only changes
 behavior when multiple levels are filled, which is the buggy path.
@@ -499,6 +513,11 @@ class TestCandlesToDataframe:
         df = FactorsMixin._candles_to_dataframe(None)
         assert df is None
 ```
+
+> **VALIDATION NOTE (2026-03-12):**
+> 1. Line numbers verified ✅ — lines 297-299 match exactly. The buggy ternary confirmed: when `candles.shape[1] == 5`, the `else` branch maps raw array (including timestamp col 0) directly to OHLCV names, producing silent data corruption. The `'close' not in df.columns` guard at line 303 does NOT catch this since all 5 column names are assigned.
+> 2. **Ambiguity in 5-column format** — The fix assumes 5 columns = `[O, H, L, C, V]` (no timestamp). If a caller passes `[ts, O, H, L, C]` (with timestamp, no volume), data will still be misaligned. This is an inherent ambiguity that cannot be resolved without caller context. Document the assumption in the docstring: "5-column arrays are assumed to be [open, high, low, close, volume] without timestamp."
+> 3. The `_candles_to_dataframe` method is a `@staticmethod` (line 284) — the test class references `FactorsMixin._candles_to_dataframe(candles)` which is correct for static method invocation.
 
 **Risk:** Low. The 6-column path (standard Jesse format) is unchanged. The fix only corrects
 the fallback path for non-standard arrays. Any caller using standard Jesse candles sees no
@@ -618,6 +637,18 @@ class TestAIMixinSymbol:
         assert call_kwargs["symbol"] == "BTCUSDT"
 ```
 
+> **VALIDATION NOTE (2026-03-12):**
+> 1. Line numbers verified ✅ — lines 148, 197, 235 match exactly. Caller lines 524 and 580 in `__init__.py` match exactly.
+> 2. **CRITICAL: Symbol format mismatch** — In Jesse's `__init__.py`, `self.symbol` returns Jesse format `"ETH-USDT"`. The AI agent (`TradingAgent`) expects Binance format `"ETHUSDT"`. Passing `self.symbol` directly will send the wrong format. **FIX: Add a conversion in the caller updates:**
+>    ```python
+>    # In __init__.py callers:
+>    ai_symbol = self.symbol.replace("-", "")  # "ETH-USDT" → "ETHUSDT"
+>    analysis = self._ai_mixin.ai_analyze_market(candle_data, indicators, symbol=ai_symbol)
+>    ```
+>    Same applies to the `live_trader.py` context where `self.symbol` is CCXT format `"ETH/USDT:USDT"` — would need `self.symbol.split("/")[0] + self.symbol.split("/")[1].split(":")[0]` or similar.
+> 3. **Missing hardcoded value** — `base_currency="BTC"` at `ai_mixin.py:202` is also hardcoded and not addressed in this plan. Should derive from symbol: `base_currency=symbol.replace("USDT", "")` or `symbol[:-4]`. Add to Phase 5 scope.
+> 4. `ai_optimize_grid` is defined in AIMixin but never called from `__init__.py` or `live_trader.py` — no caller update needed for it. ✅
+
 **Risk:** Very low. Default parameter preserves existing behavior. Callers that pass `symbol=`
 get the correct behavior.
 
@@ -724,6 +755,11 @@ class TestAIMixinBalance:
         assert call_kwargs["total_balance"] == 10000.0
 ```
 
+> **VALIDATION NOTE (2026-03-12):**
+> 1. Line numbers verified ✅ — lines 209-210 match exactly. Caller line 580 in `__init__.py` matches.
+> 2. Fix is sound. Zero-balance guard (`if total_balance > 0`) prevents division by zero. ✅
+> 3. `self.balance` in Jesse returns current equity — correct for this purpose. ✅
+
 **Risk:** Very low. Default parameter preserves existing behavior. The calculated `position_pct`
 is more accurate than the hardcoded 10%.
 
@@ -771,6 +807,19 @@ jesse-bot/tests/
 3. **Existing test regression:** The fix for P1-JESSE-1 changes `get_crossed_buy_level_price()`
    behavior. Existing test at `test_strategy.py:233-239` fills only one level so it still passes
    (first = last when there's only one fill). No regression.
+
+### Validation findings (2026-03-12):
+
+4. **P1-JESSE-3 (MUST FIX):** Clear `self.level_order_map = {}` when grid is rebuilt, otherwise
+   stale entries with reused level IDs cause a 1-hour delay before new orders are placed.
+
+5. **P2-JESSE-1 (MUST FIX, CRITICAL):** Symbol format mismatch — Jesse uses `"ETH-USDT"`,
+   AI agent expects `"ETHUSDT"`. Must add format conversion in callers. Also fix hardcoded
+   `base_currency="BTC"` at `ai_mixin.py:202`.
+
+6. **P1-JESSE-4 (minor):** Move `deque` import to file-level.
+
+7. **All line numbers verified against source** — all match within ±3 lines.
 
 ---
 
