@@ -64,6 +64,11 @@ class PositionSizer:
         Returns:
             PositionSize with calculated amount and reasoning
         """
+        if entry_price <= 0:
+            raise ValueError(f"entry_price must be positive, got {entry_price}")
+        if portfolio_value <= 0:
+            raise ValueError(f"portfolio_value must be positive, got {portfolio_value}")
+
         if self.method == SizingMethod.FIXED_AMOUNT:
             return self._fixed_amount(portfolio_value, entry_price, fixed_amount)
         elif self.method == SizingMethod.FIXED_PERCENT:

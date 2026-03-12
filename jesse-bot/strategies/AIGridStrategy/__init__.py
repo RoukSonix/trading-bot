@@ -354,10 +354,10 @@ class AIGridStrategy(Strategy):
         # Use 4h candles for trend if available, else fall back to current timeframe
         try:
             candles_4h = self.get_candles(self.exchange, self.symbol, '4h')
-            closes = list(candles_4h[:, 2])  # close prices
+            closes = list(candles_4h[:, 4])  # Jesse format: [timestamp, open, high, low, close, volume]
         except Exception as e:
             logger.warning(f"4h candles unavailable, falling back to 1h: {e}")
-            closes = list(self.candles[:, 2]) if self.candles is not None else []
+            closes = list(self.candles[:, 4]) if self.candles is not None else []
 
         if closes:
             trend = detect_trend(

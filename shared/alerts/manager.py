@@ -46,6 +46,17 @@ class AlertConfig:
         self.daily_summary_time = daily_summary_time
         self.rate_limit_per_minute = rate_limit_per_minute
         self.min_alert_interval_seconds = min_alert_interval_seconds
+
+        # Validate daily_summary_time format
+        try:
+            parts = self.daily_summary_time.split(":")
+            if len(parts) != 2:
+                raise ValueError
+            h, m = int(parts[0]), int(parts[1])
+            if not (0 <= h <= 23 and 0 <= m <= 59):
+                raise ValueError
+        except (ValueError, AttributeError):
+            self.daily_summary_time = "20:00"
     
     def to_dict(self) -> dict:
         """Convert to dictionary."""
@@ -64,7 +75,9 @@ class AlertConfig:
     @classmethod
     def from_dict(cls, data: dict) -> "AlertConfig":
         """Create from dictionary."""
-        return cls(**{k: v for k, v in data.items() if k in cls.__init__.__code__.co_varnames})
+        import inspect
+        valid_params = set(inspect.signature(cls.__init__).parameters.keys()) - {"self"}
+        return cls(**{k: v for k, v in data.items() if k in valid_params})
 
 
 class AlertManager:
@@ -411,7 +424,11 @@ Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
         while True:
             try:
                 # Parse target time
-                target_hour, target_minute = map(int, self.config.daily_summary_time.split(":"))
+                try:
+                    parts = self.config.daily_summary_time.split(":")
+                    target_hour, target_minute = int(parts[0]), int(parts[1])
+                except (ValueError, IndexError):
+                    target_hour, target_minute = 20, 0
                 
                 now = datetime.now(timezone.utc)
                 target = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)

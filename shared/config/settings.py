@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     )
     
     # Binance API
-    binance_api_key: str = Field(..., description="Binance API key")
-    binance_secret_key: str = Field(..., description="Binance secret key")
+    binance_api_key: str = Field(default="", description="Binance API key")
+    binance_secret_key: str = Field(default="", description="Binance secret key")
     binance_env: Environment = Field(
         default=Environment.TESTNET,
         description="Trading environment (testnet/production)"
@@ -163,6 +163,11 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = Field(default="INFO", description="Logging level")
     
+    def validate_trading_config(self):
+        """Call before trading — raises if API keys are missing."""
+        if not self.binance_api_key or not self.binance_secret_key:
+            raise ValueError("Binance API keys required for trading")
+
     @property
     def is_testnet(self) -> bool:
         """Check if running in testnet mode."""

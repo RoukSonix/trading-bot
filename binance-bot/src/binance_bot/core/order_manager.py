@@ -269,8 +269,8 @@ class OrderManager:
                             self.filled_orders.append(order)
                             self._save_trade(order)
                             logger.info(f"Order filled: {order}")
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch order status for {order_id}: {e}")
                     
                     del self.open_orders[order_id]
             
@@ -322,6 +322,9 @@ class OrderManager:
             session.add(trade)
             session.commit()
             logger.debug(f"Trade saved: {trade}")
+        except Exception:
+            session.rollback()
+            raise
         finally:
             session.close()
 

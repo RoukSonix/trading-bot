@@ -238,8 +238,9 @@ class GridStrategy(BaseStrategy):
         loss = -delta.where(delta < 0, 0)
         avg_gain = gain.ewm(alpha=1/14, min_periods=14).mean()
         avg_loss = loss.ewm(alpha=1/14, min_periods=14).mean()
-        rs = avg_gain / avg_loss
+        rs = avg_gain / avg_loss.replace(0, np.nan)
         rsi = 100 - (100 / (1 + rs))
+        rsi = rsi.fillna(100.0)
         current_rsi = rsi.iloc[-1]
 
         # Scoring
@@ -289,7 +290,9 @@ class GridStrategy(BaseStrategy):
         plus_di = 100 * (plus_dm.ewm(alpha=1/period, min_periods=period).mean() / atr)
         minus_di = 100 * (minus_dm.ewm(alpha=1/period, min_periods=period).mean() / atr)
 
-        dx = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di))
+        di_sum = (plus_di + minus_di).replace(0, np.nan)
+        dx = 100 * ((plus_di - minus_di).abs() / di_sum)
+        dx = dx.fillna(0.0)
         adx = dx.ewm(alpha=1/period, min_periods=period).mean()
 
         return float(adx.iloc[-1]) if not np.isnan(adx.iloc[-1]) else 0.0
@@ -749,8 +752,8 @@ class GridStrategy(BaseStrategy):
 
     def _save_trade_to_db(self, signal: Signal, is_short: bool, abs_amount: float, cost: float):
         """Save paper trade to database."""
+        db = SessionLocal()
         try:
-            db = SessionLocal()
             side_str = signal.type.value
             direction = "short" if is_short else "long"
 
@@ -779,9 +782,11 @@ class GridStrategy(BaseStrategy):
                 db.add(position)
 
             db.commit()
-            db.close()
         except Exception as e:
+            db.rollback()
             logger.warning(f"Failed to save trade to DB: {e}")
+        finally:
+            db.close()
 
     def _update_long_position(self, position: Position, signal_type: SignalType,
                               price: float, amount: float, cost: float):

@@ -263,6 +263,9 @@ class TradingBot:
         logger.info(f"Registered Strategies: {self.strategy_engine.list_strategies()}")
         logger.info("")
         
+        # Validate API keys before connecting
+        settings.validate_trading_config()
+
         # Connect to exchange
         logger.info("📡 Connecting to exchange...")
         exchange_client.connect()
@@ -283,7 +286,10 @@ class TradingBot:
             self.alert_manager.start_daily_summary_scheduler(self._get_daily_summary_data)
         
         # Initial market check
-        await self._check_entry_conditions()
+        try:
+            await self._check_entry_conditions()
+        except Exception as e:
+            logger.warning(f"Initial entry check failed (will retry in main loop): {e}")
         
         # Start main loop
         self.running = True
@@ -294,7 +300,7 @@ class TradingBot:
         await self.alert_manager.send_status_alert(
             status="started",
             symbol=self.symbol,
-            current_price=ticker["last"],
+            current_price=ticker.get("last", 0),
             total_value=initial_balance,
             trades_count=0,
             reason=f"Environment: {settings.binance_env.value}",
@@ -466,7 +472,11 @@ class TradingBot:
                 
                 # Fetch current price
                 ticker = exchange_client.get_ticker(self.symbol)
-                current_price = ticker["last"]
+                current_price = ticker.get("last") or ticker.get("close") or 0.0
+                if current_price <= 0:
+                    logger.warning(f"Invalid price from ticker: {ticker}")
+                    await asyncio.sleep(tick_interval)
+                    continue
                 
                 # Update rules engine with price
                 self.rules_engine.update_price(current_price)
@@ -798,8 +808,8 @@ class TradingBot:
             return
         
         status = self.strategy.get_status()
-        paper = status["paper_trading"]
-        
+        paper = status.get("paper_trading", {})
+
         runtime = datetime.now() - self.start_time if self.start_time else timedelta()
         
         logger.info("")
@@ -988,14 +998,14 @@ async def run_bot():
         strategy_mode=strategy_mode,
     )
     
-    loop = asyncio.get_event_loop()
-    
+    loop = asyncio.get_running_loop()
+
     def signal_handler():
         asyncio.create_task(bot.stop())
-    
+
     loop.add_signal_handler(signal.SIGINT, signal_handler)
     loop.add_signal_handler(signal.SIGTERM, signal_handler)
-    
+
     await bot.start()
 
 

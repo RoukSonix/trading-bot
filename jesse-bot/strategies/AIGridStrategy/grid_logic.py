@@ -278,6 +278,7 @@ class TrailingStopManager:
         self.peak_price: Optional[float] = None
         self.current_stop: Optional[float] = None
         self.activated: bool = False
+        self._side: Optional[str] = None
 
     def start(self, entry_price: float, side: str):
         """Initialize trailing stop for a new position.

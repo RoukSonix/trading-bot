@@ -240,7 +240,7 @@ class NewsFetcher:
 
         # Sort by published_at (newest first)
         articles.sort(
-            key=lambda a: a.published_at or datetime.min,
+            key=lambda a: a.published_at or datetime.min.replace(tzinfo=timezone.utc),
             reverse=True,
         )
 

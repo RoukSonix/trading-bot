@@ -119,7 +119,7 @@ class PerformanceMetrics:
             elif pnl < 0:
                 gross_loss += abs(pnl)
         if gross_loss == 0:
-            return float("inf") if gross_profit > 0 else 0.0
+            return 9999.99 if gross_profit > 0 else 0.0
         return gross_profit / gross_loss
 
     @staticmethod
