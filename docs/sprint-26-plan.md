@@ -555,9 +555,12 @@ Execute in this order to minimize conflicts:
 
 ### EMA Key Consumer Check
 
-Before fixing P1-BOT-5, verify what reads `ema_8` / `ema_21`:
-- `shared/strategies/` — strategy engine signal methods
-- Any strategy that uses `indicators["ema_8"]` must be updated to `indicators["ema_12"]`
+**VALIDATION NOTE:** No consumer changes needed. The fix computes actual EMA 8/21 values for the `ema_8`/`ema_21` keys, so all consumers (`momentum_strategy.py:20-21,26-27`, `regime.py:129-130`) will receive correct data without modification. The previous note suggesting consumers update to `ema_12` was incorrect — the whole point is to fix the producer to match what consumers expect.
+
+Consumers verified:
+- `shared/strategies/momentum_strategy.py:20-21,26-27` — reads `ema_8`/`ema_21` ✅
+- `shared/strategies/regime.py:129-130` — reads `ema_8`/`ema_21` ✅
+- `shared/strategies/regime.py:239-240` — computes own EMA 8/21 internally ✅
 
 ### Risk for P1-BOT-6
 
@@ -577,3 +580,27 @@ The PnL fix changes risk subsystem behavior. After implementation, verify:
 | `binance-bot/src/binance_bot/core/order_manager.py` | P1-STRAT-4,5 | 2 fixes |
 | `binance-bot/src/binance_bot/core/position_manager.py` | P1-STRAT-7,8 | 2 fixes |
 | `tests/unit/test_sprint26_bot_logic.py` | all | 28 tests |
+
+---
+
+## Validation Results (2026-03-13)
+
+All 13 issues validated against source code. Line numbers and code snippets confirmed accurate.
+
+| Issue | Lines | Code Match | Fix | Side Effects |
+|-------|-------|-----------|-----|--------------|
+| P1-BOT-1 | 462–465, 507–514 | ✅ | ✅ | Shared state now shows live price when PAUSED (was `None`) — beneficial |
+| P1-BOT-2 | 454–456 | ✅ | ✅ | `can_trade()` returns `tuple[bool, str]` confirmed at `limits.py:219` |
+| P1-BOT-4 | 694–699 | ✅ | ✅ | None |
+| P1-BOT-5 | 576–577 | ✅ | ✅ | **VALIDATION NOTE**: EMA consumer check section was incorrect — fixed above |
+| P1-BOT-6 | 639–648 | ✅ | ✅ | PnL uses avg entry price (approximate but far better than 0) |
+| P1-BOT-7 | 568, 474 | ✅ | ✅ | Single caller at line 502 confirmed |
+| P1-BOT-8 | 525–527, 1003–1007 | ✅ | ✅ | None |
+| P1-STRAT-1 | 132–135, 147–199 | ✅ | ✅ | `_setup_short_levels` signature adds `offset=0` default — backward compatible |
+| P1-STRAT-2 | 628–663 | ✅ | ✅ | `Signal` imported at grid.py:18, `_save_trade_to_db` at grid.py:753 — signatures match |
+| P1-STRAT-4 | 187–188 | ✅ | ✅ | None |
+| P1-STRAT-5 | 258–275 | ✅ | ✅ | `del` moves inside `try` — orders preserved on network error |
+| P1-STRAT-7 | 37–90 | ✅ | ✅ | `PositionInfo` needs `short_amount`/`short_entry_price` fields added |
+| P1-STRAT-8 | 113–118 | ✅ | ✅ | Depends on P1-STRAT-7 (new fields) |
+
+**Status: VALIDATED — ready for implementation**
