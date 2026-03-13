@@ -37,6 +37,8 @@ class GridManager:
         self.center: Optional[float] = None
         self.direction: str = 'both'  # 'long_only', 'short_only', or 'both'
         self.filled_levels: set[str] = set()
+        self._last_filled_buy: Optional[str] = None
+        self._last_filled_sell: Optional[str] = None
 
     def setup_grid(self, center_price: float, direction: Optional[str] = None) -> list[dict]:
         """Initialize grid levels around center price.
@@ -79,6 +81,8 @@ class GridManager:
         self.levels = levels
         self.center = center_price
         self.filled_levels = set()
+        self._last_filled_buy = None
+        self._last_filled_sell = None
         return levels
 
     def check_buy_signal(self, current_price: float) -> bool:
@@ -91,6 +95,7 @@ class GridManager:
                 if current_price <= level['price']:
                     level['filled'] = True
                     self.filled_levels.add(level['id'])
+                    self._last_filled_buy = level['id']
                     return True
         return False
 
@@ -104,20 +109,25 @@ class GridManager:
                 if current_price >= level['price']:
                     level['filled'] = True
                     self.filled_levels.add(level['id'])
+                    self._last_filled_sell = level['id']
                     return True
         return False
 
     def get_crossed_buy_level_price(self) -> Optional[float]:
         """Get price of most recently crossed buy level."""
+        if self._last_filled_buy is None:
+            return None
         for level in self.levels:
-            if level['side'] == 'buy' and level['id'] in self.filled_levels:
+            if level['id'] == self._last_filled_buy:
                 return level['price']
         return None
 
     def get_crossed_sell_level_price(self) -> Optional[float]:
         """Get price of most recently crossed sell level."""
+        if self._last_filled_sell is None:
+            return None
         for level in self.levels:
-            if level['side'] == 'sell' and level['id'] in self.filled_levels:
+            if level['id'] == self._last_filled_sell:
                 return level['price']
         return None
 
@@ -126,6 +136,8 @@ class GridManager:
         self.levels = []
         self.center = None
         self.filled_levels = set()
+        self._last_filled_buy = None
+        self._last_filled_sell = None
 
     def filter_max_levels(self, max_fill_pct: float = 0.7) -> bool:
         """Check if we haven't exceeded max filled levels."""
@@ -180,6 +192,8 @@ class GridManager:
             'center': self.center,
             'direction': self.direction,
             'filled_levels': list(self.filled_levels),
+            '_last_filled_buy': self._last_filled_buy,
+            '_last_filled_sell': self._last_filled_sell,
         }
 
     @classmethod
@@ -192,6 +206,8 @@ class GridManager:
         gm.center = data.get('center')
         gm.direction = data.get('direction', 'both')
         gm.filled_levels = set(data.get('filled_levels', []))
+        gm._last_filled_buy = data.get('_last_filled_buy')
+        gm._last_filled_sell = data.get('_last_filled_sell')
         return gm
 
 

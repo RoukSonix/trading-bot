@@ -113,9 +113,9 @@ class TestPerformanceMetrics:
         assert abs(pf - 180 / 50) < 1e-6
 
     def test_profit_factor_no_losses(self):
-        """Profit factor is inf with no losses."""
+        """Profit factor is 9999.99 with no losses (capped in Sprint 24)."""
         trades = [{"pnl": 10}, {"pnl": 20}]
-        assert PerformanceMetrics.profit_factor(trades) == float("inf")
+        assert PerformanceMetrics.profit_factor(trades) == 9999.99
 
     def test_profit_factor_no_wins(self):
         """Profit factor is 0 with no wins."""

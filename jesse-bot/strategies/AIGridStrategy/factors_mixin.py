@@ -294,13 +294,16 @@ class FactorsMixin:
         if candles is None or len(candles) == 0:
             return None
 
-        df = pd.DataFrame(
-            candles[:, 1:6] if candles.shape[1] >= 6 else candles,
-            columns=['open', 'high', 'low', 'close', 'volume'][:candles.shape[1] - 1] if candles.shape[1] >= 6 else ['open', 'high', 'low', 'close', 'volume'][:candles.shape[1]],
-        )
+        EXPECTED_COLUMNS = ['open', 'high', 'low', 'close', 'volume']
 
-        # Ensure we have at least OHLC
-        if 'close' not in df.columns:
+        if candles.shape[1] >= 6:
+            # Standard Jesse format: [timestamp, open, high, low, close, volume]
+            df = pd.DataFrame(candles[:, 1:6], columns=EXPECTED_COLUMNS)
+        elif candles.shape[1] == 5:
+            # No timestamp column: [open, high, low, close, volume]
+            df = pd.DataFrame(candles, columns=EXPECTED_COLUMNS)
+        else:
+            logger.warning(f"Candle array has unexpected shape: {candles.shape}")
             return None
 
         return df

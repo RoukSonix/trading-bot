@@ -12,7 +12,7 @@
 - Total trades: 89 (paper)
 - Strategies: Grid, Momentum, MeanReversion, Breakout (auto-selected by regime)
 - Indicators: 50+ (trend, momentum, volatility, volume, support/resistance, patterns)
-- Tests: 417+
+- Tests: 445+
 - Total commits: 120+
 - Codebase: ~14,500 lines Python
 
@@ -58,10 +58,32 @@ Key changes:
 - Jesse candle column index 2 → 4 (high → close)
 - 40+ new tests in `tests/unit/test_sprint24_p0.py`
 
+### Sprint 25 — Jesse Bot Fixes (COMPLETED)
+**Date:** 2026-03-12
+**Branch:** `feature/sprint-25-jesse-fixes`
+**Issues fixed:** 6 issues (4 P1, 2 P2)
+
+| Phase | Issue | Severity | File | Fix |
+|-------|-------|----------|------|-----|
+| 1 | P1-JESSE-3 | P1 (CRITICAL) | `live_trader.py` | Only rebuild grid on direction change, not every iteration |
+| 2 | P1-JESSE-4 | P1 | `live_trader.py` | Bounded `filled_order_ids` with deque(maxlen=500) |
+| 3 | P1-JESSE-1 | P1 | `grid_logic.py` | `get_crossed_buy_level_price` now returns most recent fill |
+| 4 | P1-JESSE-2 | P1 | `factors_mixin.py` | Fixed candle-to-dataframe column mapping for 5-col arrays |
+| 5 | P2-JESSE-1 | P2 | `ai_mixin.py` | Parameterized hardcoded "BTCUSDT" symbol |
+| 6 | P2-JESSE-2 | P2 | `ai_mixin.py` | Parameterized hardcoded total_balance=10000 |
+
+Key changes:
+- Grid state now persists across loop iterations (only rebuilds on trend change)
+- `level_order_map` cleared on rebuild to prevent stale order matching
+- `_last_filled_buy/sell` tracking in GridManager with serialization support
+- `base_currency` derived from symbol instead of hardcoded "BTC"
+- Symbol format conversion in callers: `"ETH-USDT"` → `"ETHUSDT"`
+- 28 new tests in `tests/test_sprint25.py`
+
 ### Current Sprint Plan (24-31)
 Based on Audit V2 (118 issues found):
 - **Sprint 24:** P0 runtime crash fixes ✅
-- **Sprint 25:** Jesse bot fixes
+- **Sprint 25:** Jesse bot fixes ✅
 - **Sprint 26:** Bot logic & state machine
 - **Sprint 27:** Risk management fixes
 - **Sprint 28:** Alerts, API & data consistency
