@@ -179,18 +179,19 @@ class OrderManager:
             Executed order
         """
         side = "buy" if signal.type == SignalType.BUY else "sell"
-        
+        abs_amount = abs(signal.amount)
+
         if order_type == OrderType.MARKET:
             return self.create_market_order(
                 symbol="BTC/USDT",  # TODO: get from signal
                 side=side,
-                amount=signal.amount,
+                amount=abs_amount,
             )
         else:
             return self.create_limit_order(
                 symbol="BTC/USDT",
                 side=side,
-                amount=signal.amount,
+                amount=abs_amount,
                 price=signal.price,
             )
     
@@ -269,10 +270,11 @@ class OrderManager:
                             self.filled_orders.append(order)
                             self._save_trade(order)
                             logger.info(f"Order filled: {order}")
+                        # Only delete after successful status fetch
+                        del self.open_orders[order_id]
                     except Exception as e:
                         logger.warning(f"Failed to fetch order status for {order_id}: {e}")
-                    
-                    del self.open_orders[order_id]
+                        # Keep order in tracking — will retry on next sync
             
             logger.info(f"Synced orders: {len(self.open_orders)} open")
             

@@ -132,7 +132,8 @@ class GridStrategy(BaseStrategy):
         if direction in ("long", "both"):
             self._setup_long_levels(current_price)
         if direction in ("short", "both"):
-            self._setup_short_levels(current_price)
+            offset = self.config.grid_levels if direction == "both" else 0
+            self._setup_short_levels(current_price, offset=offset)
 
         # Sort by price
         self.levels.sort(key=lambda x: x.price)
@@ -168,19 +169,23 @@ class GridStrategy(BaseStrategy):
             )
             self.levels.append(level)
 
-    def _setup_short_levels(self, center_price: float):
+    def _setup_short_levels(self, center_price: float, offset: int = 0):
         """Set up short grid: SELL levels above center, BUY (TP) levels below.
 
         For short grid, SELL levels open short positions above price,
         and BUY levels close (take profit) shorts below price.
         These are tagged with is_short=True via negative amount convention:
         negative amount signals a short-side level.
+
+        Args:
+            center_price: Center price for the grid.
+            offset: Level offset to avoid overlapping with long levels (used when direction="both").
         """
         spacing = center_price * (self.config.grid_spacing_pct / 100)
 
-        # Short-sell levels above current price (open short)
+        # Short-sell levels above current price (offset beyond long sells)
         for i in range(1, self.config.grid_levels + 1):
-            price = center_price + (spacing * i)
+            price = center_price + (spacing * (offset + i))
             level = GridLevel(
                 price=price,
                 side=SignalType.SELL,
@@ -188,9 +193,9 @@ class GridStrategy(BaseStrategy):
             )
             self.levels.append(level)
 
-        # Buy-to-cover levels below current price (close short)
+        # Buy-to-cover levels below current price (offset beyond long buys)
         for i in range(1, self.config.grid_levels + 1):
-            price = center_price - (spacing * i)
+            price = center_price - (spacing * (offset + i))
             level = GridLevel(
                 price=price,
                 side=SignalType.BUY,
@@ -652,6 +657,26 @@ class GridStrategy(BaseStrategy):
                     self.short_entry_price = 0
 
         self.realized_pnl += level.pnl
+
+        # Record the closing trade
+        close_signal = Signal(
+            type=SignalType.SELL if level.amount > 0 else SignalType.BUY,
+            price=exit_price,
+            amount=level.amount,
+            reason=f"TP/SL close at ${exit_price:,.2f}",
+        )
+        is_short = level.amount < 0
+        self._save_trade_to_db(close_signal, is_short, abs_amount, cost)
+        self.paper_trades.append({
+            "signal": close_signal,
+            "status": "filled",
+            "balance": self.paper_balance,
+            "holdings": self.paper_holdings,
+            "long_holdings": self.long_holdings,
+            "short_holdings": self.short_holdings,
+            "is_short": is_short,
+            "pnl": level.pnl,
+        })
 
         # Clear TP/SL so this level isn't checked again
         level.take_profit = 0.0
