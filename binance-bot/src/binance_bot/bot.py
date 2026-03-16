@@ -398,9 +398,10 @@ class TradingBot:
         
         self.last_review = datetime.now()
     
-    async def _fetch_market_data(self) -> dict:
+    async def _fetch_market_data(self, ticker: Optional[dict] = None) -> dict:
         """Fetch current market data."""
-        ticker = exchange_client.get_ticker(self.symbol)
+        if ticker is None:
+            ticker = exchange_client.get_ticker(self.symbol)
         
         order_book = exchange_client.get_order_book(self.symbol)
         best_bid = order_book["bids"][0][0] if order_book["bids"] else ticker["last"] * 0.999
@@ -452,17 +453,16 @@ class TradingBot:
                     logger.info("Received PAUSE command from dashboard")
                     self.state = BotState.PAUSED
                 elif cmd == "resume":
-                    logger.info("Received RESUME command from dashboard")
-                    self.state = BotState.TRADING
+                    can_trade, reason = self.risk_limits.can_trade()
+                    if can_trade:
+                        logger.info("Received RESUME command from dashboard")
+                        self.state = BotState.TRADING
+                    else:
+                        logger.warning(f"Dashboard resume blocked by risk limits: {reason}")
                 elif cmd == "stop":
                     logger.info("Received STOP command from dashboard")
                     self.running = False
                     break
-                
-                if self.state == BotState.PAUSED:
-                    self._write_shared_state(current_price=None)
-                    await asyncio.sleep(tick_interval)
-                    continue
                 
                 # Check emergency stop
                 if self.emergency_stop.is_triggered:
@@ -499,7 +499,7 @@ class TradingBot:
                     
                 elif self.state == BotState.TRADING:
                     # Execute grid trading
-                    await self._execute_trading(current_price)
+                    await self._execute_trading(current_price, ticker=ticker)
                     
                     # Periodic AI review
                     await self._maybe_ai_review(current_price)
@@ -522,9 +522,6 @@ class TradingBot:
                 
                 await asyncio.sleep(tick_interval)
                 
-            except KeyboardInterrupt:
-                await self.stop()
-                break
             except Exception as e:
                 self.errors += 1
                 logger.error(f"Error in main loop: {e}")
@@ -548,7 +545,7 @@ class TradingBot:
         if datetime.now() - self.last_entry_check >= self.entry_check_interval:
             await self._check_entry_conditions()
     
-    async def _execute_trading(self, current_price: float):
+    async def _execute_trading(self, current_price: float, ticker: Optional[dict] = None):
         """Execute grid trading logic with risk management."""
         # Check if trading is allowed
         can_trade, reason = self.risk_limits.can_trade()
@@ -556,7 +553,7 @@ class TradingBot:
             if self.state == BotState.TRADING:
                 logger.warning(f"🛑 Trading halted: {reason}")
                 self.state = BotState.PAUSED
-                
+
                 await self.alert_manager.send_status_alert(
                     status="paused",
                     symbol=self.symbol,
@@ -564,8 +561,8 @@ class TradingBot:
                     reason=f"Risk limit: {reason}",
                 )
             return
-        
-        data = await self._fetch_market_data()
+
+        data = await self._fetch_market_data(ticker=ticker)
 
         # Multi-strategy engine: evaluate regime and get signal (Sprint 22)
         if self.strategy_mode == "auto" or self.strategy_mode in StrategyRegistry.list_all():
@@ -573,8 +570,8 @@ class TradingBot:
             candles = data["indicators_df"].reset_index().to_dict("records")
             latest = data["indicators_df"].iloc[-1]
             engine_indicators = {
-                "ema_8": float(latest.get("ema_12", current_price)),
-                "ema_21": float(latest.get("ema_26", current_price)),
+                "ema_8": float(data["indicators_df"]["close"].ewm(span=8, adjust=False).mean().iloc[-1]),
+                "ema_21": float(data["indicators_df"]["close"].ewm(span=21, adjust=False).mean().iloc[-1]),
                 "rsi_14": float(latest.get("rsi", 50)),
                 "bb_upper": float(latest.get("bb_upper", current_price * 1.02)),
                 "bb_lower": float(latest.get("bb_lower", current_price * 0.98)),
@@ -636,8 +633,14 @@ class TradingBot:
         for signal in signals:
             trade = self.strategy.execute_paper_trade(signal)
             if trade["status"] == "filled":
-                # Calculate PnL for this trade (simplified for grid)
-                pnl = 0  # Grid trades are part of a series, PnL calculated on completion
+                # Calculate PnL for closing trades
+                pnl = 0.0
+                if signal.type == SignalType.SELL and hasattr(self.strategy, 'long_entry_price'):
+                    if signal.amount > 0 and self.strategy.long_entry_price > 0:
+                        pnl = (signal.price - self.strategy.long_entry_price) * signal.amount
+                elif signal.type == SignalType.BUY and signal.amount < 0:
+                    if hasattr(self.strategy, 'short_entry_price') and self.strategy.short_entry_price > 0:
+                        pnl = (self.strategy.short_entry_price - signal.price) * abs(signal.amount)
                 
                 # Record trade in risk metrics
                 self.risk_limits.record_trade(pnl, {
@@ -692,11 +695,11 @@ class TradingBot:
             return
         
         if self.last_review is None:
-            return
-        
-        interval = timedelta(minutes=self.config.review_interval_minutes)
-        if datetime.now() - self.last_review < interval:
-            return
+            pass  # First review: trigger immediately
+        else:
+            interval = timedelta(minutes=self.config.review_interval_minutes)
+            if datetime.now() - self.last_review < interval:
+                return
         
         data = await self._fetch_market_data()
         

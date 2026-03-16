@@ -13,7 +13,7 @@ from shared.core.database import get_session, Position
 class PositionInfo:
     """Position information."""
     symbol: str
-    side: str  # long/short/flat
+    side: str  # long/short/both/flat
     amount: float
     entry_price: float
     current_price: float = 0.0
@@ -21,6 +21,8 @@ class PositionInfo:
     unrealized_pnl_pct: float = 0.0
     realized_pnl: float = 0.0
     total_cost: float = 0.0
+    short_amount: float = 0.0
+    short_entry_price: float = 0.0
     
     def __repr__(self):
         return f"<Position {self.side} {self.amount:.6f} {self.symbol} @ ${self.entry_price:,.2f} PnL: ${self.unrealized_pnl:+,.2f}>"
@@ -40,14 +42,16 @@ class PositionManager:
         side: str,
         amount: float,
         price: float,
+        is_short: bool = False,
     ):
         """Update position after a trade.
-        
+
         Args:
             symbol: Trading pair
             side: buy or sell
             amount: Trade amount
             price: Trade price
+            is_short: Whether this is a short-side trade
         """
         if symbol not in self.positions:
             self.positions[symbol] = PositionInfo(
@@ -56,38 +60,62 @@ class PositionManager:
                 amount=0.0,
                 entry_price=0.0,
             )
-        
+
         pos = self.positions[symbol]
-        
-        if side == "buy":
-            # Calculate new average entry price
-            if pos.amount > 0:
-                total_cost = (pos.entry_price * pos.amount) + (price * amount)
-                pos.amount += amount
-                pos.entry_price = total_cost / pos.amount if pos.amount > 0 else 0
-            else:
-                pos.amount = amount
-                pos.entry_price = price
-            
-            pos.side = "long"
-            pos.total_cost = pos.entry_price * pos.amount
-            
-        else:  # sell
-            if pos.amount >= amount:
-                # Calculate realized PnL
-                pnl = (price - pos.entry_price) * amount
-                self.total_realized_pnl += pnl
-                pos.realized_pnl += pnl
-                pos.amount -= amount
-                
-                if pos.amount <= 0:
-                    pos.side = "flat"
-                    pos.amount = 0
-                    pos.entry_price = 0
-                
+
+        if is_short:
+            if side == "sell":
+                # Open/increase short
+                if pos.short_amount > 0:
+                    total_cost = (pos.short_entry_price * pos.short_amount) + (price * amount)
+                    pos.short_amount += amount
+                    pos.short_entry_price = total_cost / pos.short_amount if pos.short_amount > 0 else 0
+                else:
+                    pos.short_amount = amount
+                    pos.short_entry_price = price
+                pos.side = "short" if pos.amount == 0 else "both"
+            else:  # buy (cover short)
+                if pos.short_amount >= amount:
+                    pnl = (pos.short_entry_price - price) * amount
+                    self.total_realized_pnl += pnl
+                    pos.realized_pnl += pnl
+                    pos.short_amount -= amount
+                    if pos.short_amount <= 0:
+                        pos.short_amount = 0
+                        pos.short_entry_price = 0
+                    pos.side = "long" if pos.amount > 0 else "flat"
+                else:
+                    logger.warning(f"Insufficient short position to cover {amount} {symbol}")
+        else:
+            if side == "buy":
+                # Calculate new average entry price
+                if pos.amount > 0:
+                    total_cost = (pos.entry_price * pos.amount) + (price * amount)
+                    pos.amount += amount
+                    pos.entry_price = total_cost / pos.amount if pos.amount > 0 else 0
+                else:
+                    pos.amount = amount
+                    pos.entry_price = price
+
+                pos.side = "long" if pos.short_amount == 0 else "both"
                 pos.total_cost = pos.entry_price * pos.amount
-            else:
-                logger.warning(f"Insufficient position to sell {amount} {symbol}")
+
+            else:  # sell
+                if pos.amount >= amount:
+                    # Calculate realized PnL
+                    pnl = (price - pos.entry_price) * amount
+                    self.total_realized_pnl += pnl
+                    pos.realized_pnl += pnl
+                    pos.amount -= amount
+
+                    if pos.amount <= 0:
+                        pos.side = "short" if pos.short_amount > 0 else "flat"
+                        pos.amount = 0
+                        pos.entry_price = 0
+
+                    pos.total_cost = pos.entry_price * pos.amount
+                else:
+                    logger.warning(f"Insufficient position to sell {amount} {symbol}")
         
         # Save to database
         self._save_position(pos)
@@ -110,11 +138,21 @@ class PositionManager:
         pos = self.positions[symbol]
         pos.current_price = current_price
         
+        long_pnl = 0.0
+        short_pnl = 0.0
+
         if pos.amount > 0 and pos.entry_price > 0:
-            pos.unrealized_pnl = (current_price - pos.entry_price) * pos.amount
-            pos.unrealized_pnl_pct = ((current_price / pos.entry_price) - 1) * 100
+            long_pnl = (current_price - pos.entry_price) * pos.amount
+
+        if pos.short_amount > 0 and pos.short_entry_price > 0:
+            short_pnl = (pos.short_entry_price - current_price) * pos.short_amount
+
+        pos.unrealized_pnl = long_pnl + short_pnl
+
+        total_cost = (pos.entry_price * pos.amount) + (pos.short_entry_price * pos.short_amount)
+        if total_cost > 0:
+            pos.unrealized_pnl_pct = (pos.unrealized_pnl / total_cost) * 100
         else:
-            pos.unrealized_pnl = 0.0
             pos.unrealized_pnl_pct = 0.0
         
         return pos.unrealized_pnl

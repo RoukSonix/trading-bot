@@ -1,6 +1,6 @@
 # Project Status
 
-**Last updated:** 2026-03-12
+**Last updated:** 2026-03-15
 
 ## Current State
 
@@ -12,7 +12,7 @@
 - Total trades: 89 (paper)
 - Strategies: Grid, Momentum, MeanReversion, Breakout (auto-selected by regime)
 - Indicators: 50+ (trend, momentum, volatility, volume, support/resistance, patterns)
-- Tests: 445+
+- Tests: 473+
 - Total commits: 120+
 - Codebase: ~14,500 lines Python
 
@@ -80,11 +80,31 @@ Key changes:
 - Symbol format conversion in callers: `"ETH-USDT"` → `"ETHUSDT"`
 - 28 new tests in `tests/test_sprint25.py`
 
+### Sprint 26 — Bot Logic & State Machine (COMPLETED)
+**Date:** 2026-03-15
+**Branch:** `feature/sprint-26-bot-logic`
+**Issues fixed:** 13 (7 P1-BOT + 6 P1-STRAT)
+
+| File | Issues | Changes |
+|------|--------|---------|
+| `bot.py` | P1-BOT-1,2,4,5,6,7,8 | PAUSED auto-resume fix, risk-gated dashboard resume, first AI review trigger, EMA 8/21 key match, actual PnL recording, ticker reuse, KeyboardInterrupt removal |
+| `grid.py` | P1-STRAT-1,2 | Offset short levels in direction=both, _close_level trade recording |
+| `order_manager.py` | P1-STRAT-4,5 | abs(amount) for short orders, order preservation on fetch failure |
+| `position_manager.py` | P1-STRAT-7,8 | Short position tracking + unrealized PnL for shorts |
+
+Key changes:
+- PAUSED state now runs auto-resume logic (entry check + AI review)
+- Dashboard resume blocked when risk limits breached
+- PnL correctly calculated for sell/cover trades (risk limits now functional)
+- Grid direction=both produces unique price levels (no duplicates)
+- Short positions fully tracked in PositionManager with PnL
+- 28 new tests in `tests/unit/test_sprint26_bot_logic.py`
+
 ### Current Sprint Plan (24-31)
 Based on Audit V2 (118 issues found):
 - **Sprint 24:** P0 runtime crash fixes ✅
 - **Sprint 25:** Jesse bot fixes ✅
-- **Sprint 26:** Bot logic & state machine
+- **Sprint 26:** Bot logic & state machine ✅
 - **Sprint 27:** Risk management fixes
 - **Sprint 28:** Alerts, API & data consistency
 - **Sprint 29:** Architecture & decoupling
