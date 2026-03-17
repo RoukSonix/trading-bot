@@ -120,8 +120,11 @@ class RiskLimits:
         if self.daily_stats.date != date.today():
             self._reset_daily_stats()
             self.consecutive_losses = 0  # Reset streak on new day
-            self.trading_halted = False  # Allow trading again
-            self.halt_reason = ""
+
+            # Only auto-resume if halt was daily-scoped (not max drawdown)
+            if self.trading_halted and "drawdown" not in self.halt_reason.lower():
+                self.trading_halted = False
+                self.halt_reason = ""
         
         old_balance = self.daily_stats.current_balance
         self.daily_stats.current_balance = new_balance
@@ -180,8 +183,11 @@ class RiskLimits:
             self._halt_trading(f"Daily loss limit breached: {daily_loss*100:.1f}%")
             return LimitStatus.BREACHED
         
-        # Check max drawdown
-        current_dd = self.daily_stats.current_drawdown
+        # Check max drawdown (from overall HWM, not daily)
+        current_dd = (
+            (self.high_water_mark - self.daily_stats.current_balance) / self.high_water_mark
+            if self.high_water_mark > 0 else 0.0
+        )
         if current_dd >= self.max_drawdown_limit:
             self._halt_trading(f"Max drawdown breached: {current_dd*100:.1f}%")
             return LimitStatus.BREACHED

@@ -1,6 +1,6 @@
 # Project Status
 
-**Last updated:** 2026-03-15
+**Last updated:** 2026-03-17
 
 ## Current State
 
@@ -100,12 +100,35 @@ Key changes:
 - Short positions fully tracked in PositionManager with PnL
 - 28 new tests in `tests/unit/test_sprint26_bot_logic.py`
 
+### Sprint 27 — Risk Management Fixes (COMPLETED)
+**Date:** 2026-03-17
+**Branch:** `feature/sprint-27-risk`
+**Issues fixed:** 10 (9 P1-RISK + 1 P1-BOT)
+
+| File | Issues | Changes |
+|------|--------|---------|
+| `position_sizer.py` | P1-RISK-2 | Fixed risk_amount double-applying percentage |
+| `metrics.py` | P1-RISK-3, P1-RISK-4, P1-RISK-9 | Sortino/profit factor sentinel for all-winning; sqrt(N) annualization |
+| `limits.py` | P1-RISK-5, P1-RISK-6 | Max drawdown halt persists across days; drawdown from overall HWM |
+| `trades.py` | P1-RISK-7, P1-RISK-8 | FIFO win/loss pairing; symbol filter applied to TradeLog queries |
+| `stop_loss.py` | P1-RISK-10 | Composite key for multi-position per symbol; backward-compatible API |
+| `state.py` + `bot.py` | P1-BOT-3 | strategy_engine field added to BotState; write before persist |
+
+Key changes:
+- Position sizing risk_amount no longer squared (was 0.04% instead of 2%)
+- All-winning strategies now show sentinel 99.99 for Sortino/profit factor
+- Max drawdown halt survives daily reset; drawdown measured from overall HWM
+- Trade pairing uses FIFO instead of broken any()/all() logic
+- StopLossManager supports multiple positions per symbol via composite keys
+- Strategy engine status persisted in shared state file
+- 33 new tests in `tests/unit/test_sprint27_risk.py`
+
 ### Current Sprint Plan (24-31)
 Based on Audit V2 (118 issues found):
 - **Sprint 24:** P0 runtime crash fixes ✅
 - **Sprint 25:** Jesse bot fixes ✅
 - **Sprint 26:** Bot logic & state machine ✅
-- **Sprint 27:** Risk management fixes
+- **Sprint 27:** Risk management fixes ✅
 - **Sprint 28:** Alerts, API & data consistency
 - **Sprint 29:** Architecture & decoupling
 - **Sprint 30:** Code quality & cleanup

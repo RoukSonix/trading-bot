@@ -125,7 +125,7 @@ class RiskMetrics:
         gross_profit = sum(t.pnl for t in self.winning_trades)
         gross_loss = abs(sum(t.pnl for t in self.losing_trades))
         if gross_loss == 0:
-            return 0.0
+            return 99.99 if gross_profit > 0 else 0.0
         return gross_profit / gross_loss
     
     @property
@@ -184,10 +184,11 @@ class RiskMetrics:
         if std_return == 0:
             return 0.0
         
-        # Annualize (assuming 252 trading days)
-        trades_per_year = len(self.trades) * (365 / period_days) if period_days > 0 else len(self.trades)
-        annualized_return = avg_return * trades_per_year
-        annualized_std = std_return * (trades_per_year ** 0.5)
+        # Annualize using sqrt(N) scaling
+        trades_per_day = len(self.trades) / period_days if period_days > 0 else 1
+        trading_periods_per_year = 252  # Standard trading days
+        annualized_return = avg_return * trading_periods_per_year * trades_per_day
+        annualized_std = std_return * ((trading_periods_per_year * trades_per_day) ** 0.5)
         
         sharpe = (annualized_return - self.risk_free_rate) / annualized_std
         return sharpe
@@ -206,6 +207,9 @@ class RiskMetrics:
         negative_returns = [r for r in returns if r < 0]
         
         if not negative_returns:
+            avg_return = statistics.mean(returns)
+            if avg_return > 0:
+                return 99.99  # Capped sentinel — no downside risk
             return 0.0
 
         avg_return = statistics.mean(returns)
@@ -214,10 +218,11 @@ class RiskMetrics:
         if downside_std == 0:
             return 0.0
         
-        # Annualize
-        trades_per_year = len(self.trades) * (365 / period_days) if period_days > 0 else len(self.trades)
-        annualized_return = avg_return * trades_per_year
-        annualized_downside = downside_std * (trades_per_year ** 0.5)
+        # Annualize using sqrt(N) scaling
+        trades_per_day = len(self.trades) / period_days if period_days > 0 else 1
+        trading_periods_per_year = 252  # Standard trading days
+        annualized_return = avg_return * trading_periods_per_year * trades_per_day
+        annualized_downside = downside_std * ((trading_periods_per_year * trades_per_day) ** 0.5)
         
         sortino = (annualized_return - self.risk_free_rate) / annualized_downside
         return sortino

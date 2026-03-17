@@ -100,7 +100,8 @@ class StopLossManager:
         self.atr_multiplier = atr_multiplier
         
         self.positions: Dict[str, Position] = {}
-        
+        self._position_counter: int = 0
+
         logger.info(
             f"StopLossManager initialized: "
             f"SL={default_stop_pct*100}%, TP={default_tp_pct*100}%, "
@@ -166,71 +167,85 @@ class StopLossManager:
             position.trailing_stop = entry_price * self.trailing_pct
             position.trailing_high = entry_price
         
-        self.positions[symbol] = position
-        
+        self._position_counter += 1
+        position_id = f"{symbol}_{self._position_counter}"
+        self.positions[position_id] = position
+
         logger.info(
-            f"Position added: {symbol} @ ${entry_price:.2f}, "
+            f"Position added: {position_id} @ ${entry_price:.2f}, "
             f"SL=${sl_price:.2f}, TP=${tp_price:.2f}"
         )
-        
+
         return position
     
     def check_position(self, symbol: str, current_price: float) -> Dict:
         """
-        Check if stop-loss or take-profit is triggered.
-        
+        Check if stop-loss or take-profit is triggered for any position matching symbol.
+
         Returns:
-            Dict with action and details
+            Dict with action and details (first triggered result, or no-action)
         """
-        if symbol not in self.positions:
+        results = self.check_positions_for_symbol(symbol, current_price)
+        if results:
+            return results[0]
+        # Check if any positions exist for this symbol
+        has_positions = any(pos.symbol == symbol for pos in self.positions.values())
+        if not has_positions:
             return {"action": None, "reason": "Position not found"}
-        
-        position = self.positions[symbol]
-        
-        # Update trailing stop
-        if position.trailing_stop:
-            position.update_trailing(current_price)
-        
-        # Check stop-loss
-        if position.stop_loss and position.stop_loss.check(current_price, position.is_long):
-            pnl = self._calculate_pnl(position, current_price)
-            logger.warning(
-                f"🛑 STOP-LOSS triggered: {symbol} @ ${current_price:.2f}, "
-                f"PnL: ${pnl:.2f}"
-            )
-            return {
-                "action": "stop_loss",
-                "price": current_price,
-                "stop_price": position.stop_loss.price,
-                "pnl": pnl,
-                "position": position,
-            }
-        
-        # Check take-profit
-        if position.take_profit:
-            is_long = position.is_long
-            # Flip check logic for take-profit (triggers above for long)
-            tp_triggered = (
-                current_price >= position.take_profit.price if is_long
-                else current_price <= position.take_profit.price
-            )
-            if tp_triggered:
-                position.take_profit.triggered = True
-                position.take_profit.triggered_at = datetime.now()
+        return {"action": None}
+
+    def check_positions_for_symbol(self, symbol: str, current_price: float) -> List[Dict]:
+        """Check all positions for a symbol, return list of triggered results."""
+        results = []
+        for pid, position in list(self.positions.items()):
+            if position.symbol != symbol:
+                continue
+
+            # Update trailing stop
+            if position.trailing_stop:
+                position.update_trailing(current_price)
+
+            # Check stop-loss
+            if position.stop_loss and position.stop_loss.check(current_price, position.is_long):
                 pnl = self._calculate_pnl(position, current_price)
-                logger.info(
-                    f"🎯 TAKE-PROFIT triggered: {symbol} @ ${current_price:.2f}, "
+                logger.warning(
+                    f"🛑 STOP-LOSS triggered: {pid} @ ${current_price:.2f}, "
                     f"PnL: ${pnl:.2f}"
                 )
-                return {
-                    "action": "take_profit",
+                results.append({
+                    "action": "stop_loss",
+                    "position_id": pid,
                     "price": current_price,
-                    "tp_price": position.take_profit.price,
+                    "stop_price": position.stop_loss.price,
                     "pnl": pnl,
                     "position": position,
-                }
-        
-        return {"action": None, "position": position}
+                })
+                continue
+
+            # Check take-profit
+            if position.take_profit:
+                is_long = position.is_long
+                tp_triggered = (
+                    current_price >= position.take_profit.price if is_long
+                    else current_price <= position.take_profit.price
+                )
+                if tp_triggered:
+                    position.take_profit.triggered = True
+                    position.take_profit.triggered_at = datetime.now()
+                    pnl = self._calculate_pnl(position, current_price)
+                    logger.info(
+                        f"🎯 TAKE-PROFIT triggered: {pid} @ ${current_price:.2f}, "
+                        f"PnL: ${pnl:.2f}"
+                    )
+                    results.append({
+                        "action": "take_profit",
+                        "position_id": pid,
+                        "price": current_price,
+                        "tp_price": position.take_profit.price,
+                        "pnl": pnl,
+                        "position": position,
+                    })
+        return results
     
     def _calculate_pnl(self, position: Position, current_price: float) -> float:
         """Calculate PnL for a position."""
@@ -240,29 +255,39 @@ class StopLossManager:
             return (position.entry_price - current_price) * position.amount
     
     def remove_position(self, symbol: str):
-        """Remove a position after exit."""
-        if symbol in self.positions:
-            del self.positions[symbol]
-            logger.info(f"Position removed: {symbol}")
+        """Remove all positions for a symbol."""
+        to_remove = [pid for pid, pos in self.positions.items() if pos.symbol == symbol]
+        for pid in to_remove:
+            del self.positions[pid]
+        if to_remove:
+            logger.info(f"Positions removed for {symbol}: {to_remove}")
+
+    def remove_position_by_id(self, position_id: str):
+        """Remove a specific position by its ID."""
+        if position_id in self.positions:
+            del self.positions[position_id]
+            logger.info(f"Position removed: {position_id}")
     
     def get_all_positions(self) -> List[Position]:
         """Get all active positions."""
         return list(self.positions.values())
     
     def update_stop_loss(self, symbol: str, new_price: float):
-        """Manually update stop-loss price."""
-        if symbol in self.positions:
-            self.positions[symbol].stop_loss = StopLevel(
-                price=new_price,
-                type=StopLossType.FIXED,
-            )
-            logger.info(f"Stop-loss updated: {symbol} → ${new_price:.2f}")
-    
+        """Manually update stop-loss price for all positions matching symbol."""
+        for pid, pos in self.positions.items():
+            if pos.symbol == symbol:
+                pos.stop_loss = StopLevel(
+                    price=new_price,
+                    type=StopLossType.FIXED,
+                )
+                logger.info(f"Stop-loss updated: {pid} → ${new_price:.2f}")
+
     def update_take_profit(self, symbol: str, new_price: float):
-        """Manually update take-profit price."""
-        if symbol in self.positions:
-            self.positions[symbol].take_profit = StopLevel(
-                price=new_price,
-                type=StopLossType.FIXED,
-            )
-            logger.info(f"Take-profit updated: {symbol} → ${new_price:.2f}")
+        """Manually update take-profit price for all positions matching symbol."""
+        for pid, pos in self.positions.items():
+            if pos.symbol == symbol:
+                pos.take_profit = StopLevel(
+                    price=new_price,
+                    type=StopLossType.FIXED,
+                )
+                logger.info(f"Take-profit updated: {pid} → ${new_price:.2f}")

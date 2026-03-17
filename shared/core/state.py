@@ -68,6 +68,9 @@ class BotState:
     paper_total_value: float = 10000.0
     paper_trades_count: int = 0
     
+    # Strategy engine status
+    strategy_engine: dict = field(default_factory=dict)
+
     # Timestamp
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
     
@@ -82,10 +85,12 @@ class BotState:
         grid_levels = data.get("grid_levels", [])
         positions = data.get("positions", [])
 
-        excluded = {"grid_levels", "positions"}
+        strategy_engine = data.get("strategy_engine", {})
+        excluded = {"grid_levels", "positions", "strategy_engine"}
         state = cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__ and k not in excluded})
         state.grid_levels = grid_levels
         state.positions = positions
+        state.strategy_engine = strategy_engine
         return state
 
 
