@@ -908,12 +908,10 @@ class TradingBot:
                 paper_trades_count=paper_trades,
             )
             
-            write_state(state)
-
-            # Write strategy engine status alongside shared state
+            # Add engine status before writing
             engine_status = self.strategy_engine.get_status()
-            state_dict = state.__dict__ if hasattr(state, '__dict__') else {}
-            state_dict["strategy_engine"] = engine_status
+            state.strategy_engine = engine_status
+            write_state(state)
         except Exception as e:
             logger.debug(f"Failed to write shared state: {e}")
 

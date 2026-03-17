@@ -124,7 +124,7 @@ class PositionSizer:
         return PositionSize(
             amount=amount_base,
             value=amount_usd,
-            risk_amount=amount_usd * self.risk_per_trade,
+            risk_amount=amount_usd,
             method=SizingMethod.FIXED_PERCENT,
             reasoning=f"{self.risk_per_trade*100:.1f}% of portfolio = ${amount_usd:.2f}",
         )

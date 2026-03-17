@@ -234,13 +234,13 @@ class TestBug007SortinoFinite:
     """Test that Sortino ratio never returns infinity."""
 
     def test_sortino_no_negative_returns(self):
-        """All positive returns should return 0.0, not inf."""
+        """All positive returns should return capped 99.99, not inf."""
         metrics = RiskMetrics()
         # Add only winning trades
         for i in range(5):
             metrics.record_trade("BTC/USDT", "buy", 100.0, 110.0, 1.0)
         result = metrics.sortino_ratio()
-        assert result == 0.0
+        assert result == 99.99
         assert isinstance(result, float)
 
     def test_sortino_mixed_returns(self):
@@ -268,11 +268,11 @@ class TestBug007SortinoFinite:
         json.dumps({"sortino": result})
 
     def test_profit_factor_no_inf(self):
-        """Test profit_factor returns 0.0 instead of inf when no losses."""
+        """Test profit_factor returns capped 99.99 instead of inf when no losses."""
         metrics = RiskMetrics()
         for i in range(3):
             metrics.record_trade("BTC/USDT", "buy", 100.0, 110.0, 1.0)
-        assert metrics.profit_factor == 0.0
+        assert metrics.profit_factor == 99.99
         json.dumps({"profit_factor": metrics.profit_factor})
 
     def test_get_summary_json_serializable(self):

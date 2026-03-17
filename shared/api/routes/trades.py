@@ -102,8 +102,11 @@ async def get_pnl_summary(
     session = get_session()
     try:
         # Try TradeLog first (has explicit pnl), fallback to Trade table
-        logs = session.query(TradeLog).all()
-        
+        query = session.query(TradeLog)
+        if symbol:
+            query = query.filter(TradeLog.symbol == symbol)
+        logs = query.all()
+
         # Initialize before if/else to avoid NameError
         total_cost_buys = 0.0
         total_cost_sells = 0.0
@@ -132,8 +135,19 @@ async def get_pnl_summary(
             # Approximate winning/losing from paired trades
             buys = [t for t in trades if t.side == "buy"]
             sells = [t for t in trades if t.side == "sell"]
-            winning = [s for s in sells if any(float(s.price) > float(b.price) for b in buys)]
-            losing = [s for s in sells if all(float(s.price) <= float(b.price) for b in buys)]
+            # FIFO pairing — match sells to buys in chronological order
+            winning = []
+            losing = []
+            buy_queue = list(buys)  # Copy for FIFO consumption
+            for sell in sells:
+                if buy_queue:
+                    paired_buy = buy_queue.pop(0)
+                    if float(sell.price) > float(paired_buy.price):
+                        winning.append(sell)
+                    else:
+                        losing.append(sell)
+                else:
+                    losing.append(sell)  # No matching buy → loss
             total_trades = len(trades)
         
         # Get unrealized from state
@@ -171,7 +185,10 @@ async def get_pnl_history(
     session = get_session()
     try:
         # Try TradeLog first, fallback to Trade
-        logs = session.query(TradeLog).order_by(TradeLog.timestamp.asc()).all()
+        query = session.query(TradeLog)
+        if symbol:
+            query = query.filter(TradeLog.symbol == symbol)
+        logs = query.order_by(TradeLog.timestamp.asc()).all()
         
         if logs:
             cumulative = 0
