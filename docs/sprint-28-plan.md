@@ -253,7 +253,12 @@ def get_session():
 - `from shared.core.database import engine` → `from shared.core.database import get_engine`
 - Direct `SessionLocal()` calls → `get_session()`
 
-Likely callers: `shared/api/routes/*.py`, `shared/risk/trades.py`, `binance-bot/src/binance_bot/strategies/grid.py`, `shared/backtest/engine.py`.
+Confirmed callers from grep:
+- `shared/api/main.py:22` — `from shared.core.database import init_db, engine as db_engine` (used on line 366 in readiness check)
+- `binance-bot/src/binance_bot/strategies/grid.py:19` — `from shared.core.database import SessionLocal, Trade, Position`
+- `shared/api/routes/positions.py:9` — already uses `get_session` ✅
+
+**VALIDATION NOTE (2026-03-17):** `init_db()` (line 113) and `_auto_migrate()` (line 120) inside `database.py` itself also reference `engine` and `DATABASE_URL` at module scope. These must be updated to call `get_engine()` internally. `Base = declarative_base()` (line 35) can remain at module level — no filesystem side effects.
 
 **Test:**
 - `test_import_no_side_effects`: import database module → `data/` directory NOT created, no SQLite connection.
@@ -276,7 +281,7 @@ Likely callers: `shared/api/routes/*.py`, `shared/risk/trades.py`, `binance-bot/
 # Fix: add early return when state data was found
             orders.append(OrderResponse(...))
     if orders:
-        return OrderListResponse(orders=orders, count=len(orders))
+        return OrderListResponse(orders=orders, total=len(orders))
     # Fallback to in-process bot instance (local dev)
     bot = _get_bot()
 ```
@@ -289,13 +294,13 @@ Likely callers: `shared/api/routes/*.py`, `shared/risk/trades.py`, `binance-bot/
 
 ## Issue 9: P2-CORE-1 — `datetime.now()` without timezone (52 occurrences)
 
-**Files:** 15+ files, 52 total occurrences
+**Files:** 13 files, ~50 total occurrences (49 explicit calls + 1 default_factory)
 **Bug:** Inconsistent timezone handling. Some code uses `datetime.now()` (naive), some uses `datetime.now(timezone.utc)` (aware). Cross-module comparison raises `TypeError`.
 
 **Affected files and line counts:**
 | File | Count | Lines |
 |------|-------|-------|
-| `binance-bot/src/binance_bot/bot.py` | 13 | 296, 368, 399, 545, 701, 713, 756, 787, 816, 865, 882, 889, 891 |
+| `binance-bot/src/binance_bot/bot.py` | 10 | 296, 368, 399, 545, 701, 713, 756, 787, 816, 865 |
 | `shared/alerts/rules.py` | 7 | 58, 63, 83, 196, 224, 294, 398 |
 | `shared/api/main.py` | 6 | 238, 243, 257, 333, 346, 411 |
 | `shared/api/routes/candles.py` | 5 | 115, 163, 173, 188, 200 |
@@ -304,10 +309,12 @@ Likely callers: `shared/api/routes/*.py`, `shared/risk/trades.py`, `binance-bot/
 | `shared/api/routes/bot.py` | 3 | 39, 52, 65 |
 | `shared/core/state.py` | 2 | 75, 166 |
 | `shared/alerts/manager.py` | 2 | 133, 157 |
-| `shared/risk/stop_loss.py` | 2 | 39, 234 |
+| `shared/risk/stop_loss.py` | 3 | 39, 51 (default_factory=datetime.now), 234 |
 | `shared/risk/metrics.py` | 2 | 60, 74 |
 | `shared/risk/limits.py` | 1 | 164 |
 | `shared/api/routes/positions.py` | 1 | 91 |
+
+**VALIDATION NOTE (2026-03-17):** Original plan listed 52 occurrences / 13 in bot.py. Actual grep shows 49 explicit `datetime.now()` calls. Lines 882, 889, 891 in bot.py are `10000.0` defaults (P2-BOT-1), not datetime. Also `stop_loss.py:51` has `default_factory=datetime.now` (no parens) which also produces naive datetimes at runtime — added above.
 
 **Fix:** Global find-and-replace `datetime.now()` → `datetime.now(timezone.utc)` in all locations. Ensure `from datetime import timezone` is imported where needed.
 
@@ -496,6 +503,8 @@ initial_balance = self.settings.paper_initial_balance if hasattr(self, 'settings
 
 **VALIDATION NOTE:** This is a large-surface change. The `10000.0` appears in many `.get("key", 10000.0)` default-value positions. Strategy: (1) add `PAPER_INITIAL_BALANCE` constant to `shared/config/settings.py`, (2) update `BotState` defaults in `state.py`, (3) update `bot.py` to read from settings/state, (4) leave scripts and jesse-bot for a later pass (lower risk).
 
+**VALIDATION NOTE (2026-03-17):** bot.py lines 329, 662, 667, 803, 831, 832 use `10000` (int) not `10000.0` (float). Grep for both forms during implementation. Total verified: 7× `10000.0` + 6× `10000` = 13 in bot.py ✅.
+
 **Test:**
 - `test_initial_balance_from_settings`: set env `PAPER_INITIAL_BALANCE=5000` → bot uses 5000.
 - `test_initial_balance_default`: no env var → defaults to 10000.
@@ -586,4 +595,15 @@ All 15 issues validated against source. Line numbers verified by reading each fi
 - P1-CORE-4: audit said 10-32 → actual 10-34
 - P2-RISK-1: audit said 81,158-162 → actual 81,161-165
 - P2-BOT-1: audit said 6+ places → actual 22 occurrences across 9 files
-- P2-CORE-1: audit said 30+ places → actual 52 occurrences across 15+ files
+- P2-CORE-1: audit said 30+ places → actual ~50 occurrences across 13 files
+
+### Second-pass validation (2026-03-17, full source read)
+
+Every source file read line-by-line. Corrections applied inline:
+
+1. **Issue 7 (P1-CORE-4):** Added note — `init_db()` and `_auto_migrate()` inside `database.py` also need `get_engine()` internally.
+2. **Issue 8 (P1-RISK-1):** Fix code had `count=len(orders)` but `OrderListResponse` uses `total` field → corrected to `total=`.
+3. **Issue 9 (P2-CORE-1):** bot.py count was 13 → corrected to 10. Lines 882/889/891 are `10000.0` (P2-BOT-1), not `datetime.now()`. Added `stop_loss.py:51` `default_factory=datetime.now`. Total ~50 (not 52).
+4. **Issue 15 (P2-BOT-1):** bot.py uses `10000` (int) on 6 lines and `10000.0` (float) on 7 lines — noted to grep both forms.
+5. **No side effects found** in any proposed fix that would break existing behavior beyond the intended change.
+6. **All other line numbers confirmed exactly** — no discrepancies in Issues 1–6, 10–14.
