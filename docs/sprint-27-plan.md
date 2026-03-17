@@ -262,6 +262,8 @@ def check_positions_for_symbol(self, symbol: str, current_price: float) -> List[
 
 Keep `check_position()` as a backward-compatible wrapper.
 
+**VALIDATION NOTE:** `check_position()` (line 178) does a dict lookup by `symbol` key — with composite keys this returns "Position not found". Must rewrite `check_position()` to iterate positions matching the symbol (same as `check_positions_for_symbol` but returning the first triggered result). Similarly, `remove_position()` (line 242) looks up by `symbol` and will silently no-op. Need a `remove_position_by_id(position_id)` plus update `remove_position(symbol)` to remove ALL positions for a symbol. Bot.py callers (lines 606, 618, 676) must be updated or the wrappers must handle legacy `symbol`-only lookups.
+
 **Test:**
 - `test_multiple_positions_same_symbol`: add 3 BTC positions → all 3 tracked.
 - `test_stop_loss_triggers_correct_position`: different entry prices → only the correct one triggers.
@@ -349,3 +351,26 @@ Test classes:
 - `TestP1Risk9Annualization`
 - `TestP1Risk10MultiPosition`
 - `TestP1Bot3StrategyEnginePersist`
+
+---
+
+## Validation (2026-03-17)
+
+All 10 issues validated against source. Line numbers verified.
+
+### Issues 1–8, 10: Line numbers correct, fixes verified, no side effects.
+
+### Issue 9 (P1-RISK-10): VALIDATION NOTE — Side effects in callers
+
+Changing `self.positions[symbol]` → `self.positions[f"{symbol}_{N}"]` breaks three existing methods that do dict lookups by plain symbol:
+
+1. **`check_position(symbol, price)`** (stop_loss.py:178) — `symbol not in self.positions` will always be True → returns "Position not found". Must rewrite to iterate matching positions.
+2. **`remove_position(symbol)`** (stop_loss.py:242) — `del self.positions[symbol]` raises KeyError or silently no-ops. Must iterate and remove by symbol or accept position_id.
+3. **`update_stop_loss(symbol, price)`** / **`update_take_profit(symbol, price)`** (stop_loss.py:252, 261) — same dict-key issue.
+
+**Bot.py callers affected:**
+- Line 606: `self.stop_loss_manager.check_position(self.symbol, current_price)`
+- Line 618: `self.stop_loss_manager.remove_position(self.symbol)`
+- Line 676: `self.stop_loss_manager.add_position(symbol=self.symbol, ...)`
+
+**Required:** Either (a) update all callers in bot.py to use `check_positions_for_symbol()` and `remove_position_by_id()`, or (b) make the wrapper methods (`check_position`, `remove_position`, `update_stop_loss`, `update_take_profit`) iterate positions by symbol prefix. Option (b) is lower-risk since it preserves the existing API.
