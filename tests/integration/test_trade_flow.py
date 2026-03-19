@@ -44,7 +44,7 @@ class TestFullTradeFlow:
         """A filled buy should create Trade and Position rows in DB."""
         Session = trade_db
 
-        with patch("binance_bot.strategies.grid.SessionLocal", Session):
+        with patch("binance_bot.strategies.grid.get_session", Session):
             signal = Signal(
                 type=SignalType.BUY,
                 price=49500.0,
@@ -74,7 +74,7 @@ class TestFullTradeFlow:
         """Buy then sell should update position and realize PnL."""
         Session = trade_db
 
-        with patch("binance_bot.strategies.grid.SessionLocal", Session):
+        with patch("binance_bot.strategies.grid.get_session", Session):
             # Buy
             buy_signal = Signal(
                 type=SignalType.BUY,
@@ -109,7 +109,7 @@ class TestFullTradeFlow:
         """Multiple buys should average the entry price."""
         Session = trade_db
 
-        with patch("binance_bot.strategies.grid.SessionLocal", Session):
+        with patch("binance_bot.strategies.grid.get_session", Session):
             strategy.execute_paper_trade(
                 Signal(type=SignalType.BUY, price=50000.0, amount=0.01, reason="buy1")
             )
@@ -133,7 +133,7 @@ class TestFullTradeFlow:
         strategy.setup_grid(50000.0)
         df = make_ohlcv_df(30, base_price=50000.0)
 
-        with patch("binance_bot.strategies.grid.SessionLocal", Session):
+        with patch("binance_bot.strategies.grid.get_session", Session):
             # Price drops to trigger buy signal
             signals = strategy.calculate_signals(df, 49400.0)
             assert len(signals) >= 1
@@ -162,7 +162,7 @@ class TestFullTradeFlow:
         """Selling less than held should keep position as 'long'."""
         Session = trade_db
 
-        with patch("binance_bot.strategies.grid.SessionLocal", Session):
+        with patch("binance_bot.strategies.grid.get_session", Session):
             strategy.execute_paper_trade(
                 Signal(type=SignalType.BUY, price=50000.0, amount=0.05, reason="big buy")
             )
@@ -181,7 +181,7 @@ class TestFullTradeFlow:
         Session = trade_db
         initial_balance = strategy.paper_balance
 
-        with patch("binance_bot.strategies.grid.SessionLocal", Session):
+        with patch("binance_bot.strategies.grid.get_session", Session):
             strategy.execute_paper_trade(
                 Signal(type=SignalType.BUY, price=50000.0, amount=0.01, reason="buy")
             )

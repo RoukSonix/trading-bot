@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from shared.api.routes.bot import router
+from shared.api.auth import require_api_key
 from shared.core.state import BotState as SharedBotState
 
 
@@ -16,6 +17,9 @@ def client(tmp_path):
     """FastAPI TestClient with bot router mounted."""
     app = FastAPI()
     app.include_router(router, prefix="/api/bot")
+
+    # Override auth dependency so tests don't need TRADING_API_KEY
+    app.dependency_overrides[require_api_key] = lambda: "test-key"
 
     # Patch write_command and read_state to use tmp_path
     cmd_file = tmp_path / "bot_command.json"
