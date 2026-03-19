@@ -70,30 +70,52 @@ cd ../trading-bots-<task-name>             # work here
 ./scripts/worktree.sh cleanup <task-name>  # merge + cleanup
 ```
 
-### 4-Step Development Pipeline
+### 5-Step Sprint Pipeline
 
-Every feature/fix follows this pipeline:
+Every feature/fix follows this pipeline. Each step = separate ACP agent.
 
 **Step 1 — Planning (Claude ACP)**
-Agent receives the task, creates a detailed implementation plan, finishes.
+Agent receives the task, reads AGENTS.md and project docs.
+Creates plan in `docs/<sprint>-plan.md` — files, changes, test cases.
+Commits plan to branch, finishes.
 
 **Step 2 — Validation (Claude ACP)**
-A different agent reviews the plan, simulates implementation to find potential issues, fixes the plan if needed, finishes.
+A DIFFERENT agent validates the plan: simulates implementation, looks for problems.
+Checks: will it break anything? Are tests sufficient? Missing edge cases?
+If OK — writes "APPROVED". If not — fixes the plan.
+Commits, finishes.
 
 **Step 3 — Implementation (Claude ACP)**
-Agent implements according to the plan, updates `docs/STATUS.md`, commits to branch.
+Agent implements strictly according to the plan.
+Writes code + tests, updates `docs/STATUS.md`.
+Runs `pytest tests/ -v`, commits to branch.
 
-**Step 4 — Testing (Codex ACP)**
-Agent tests the implementation. For UI changes, uses `playwright-interactive` skill.
-For backend changes, runs `pytest tests/ -v`.
+**Step 4 — Testing (E2E / Codex ACP)**
+Verification via Playwright E2E or manual smoke test.
+Bugs → GitHub Issues.
+
+**Step 5 — Merge**
+PR → code review → merge to main.
+Worktree deleted, MONITOR.md deleted.
+Final message posted to channel.
+
+### Infrastructure
+
+- **Worktree:** `git worktree add ../repo-<task> -b <branch> main` — agents work in isolated copy, never in main
+- **MONITOR.md** — flag file in repo root: current step, agent session key, start time. Zmywarka reads it every 5 min
+- **Zmywarka** — separate monitoring bot, checks MONITOR.md every 5 min via cron. If agent stuck >15 min → sends alert for check and restart
+- **GitHub Issues** — for bugs and tracking
+- **docs/** — plans, statuses, retrospectives
 
 ### Rules
 
-1. **Bugs found during testing → GitHub Issues** in this repository
-2. **Test coverage must be >80%**
-3. **Code review** is done by a SEPARATE agent (not the developer)
-4. **After merge** — rebuild Docker if code changed
-5. **Update `docs/STATUS.md`** after completing any sprint or significant change
+1. **Code is written ONLY by ACP agents**, never directly
+2. **Each step = separate ACP agent** (cannot combine steps)
+3. **Work only in branches**, never in main
+4. **After merge** — always post message to channel
+5. **Bugs found during testing → GitHub Issues** in this repository
+6. **Test coverage must be >80%**
+7. **Update `docs/STATUS.md`** after completing any sprint or significant change
 
 ### Commit Convention
 
