@@ -1,10 +1,12 @@
 """Order management API endpoints."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel
+
+from shared.api.auth import require_api_key
 
 router = APIRouter()
 
@@ -82,10 +84,13 @@ async def get_orders(
                     amount=level.get("amount", 0),
                     filled=0.0,
                     status="open",
-                    timestamp=datetime.fromisoformat(state.timestamp) if state.timestamp else datetime.now(),
+                    timestamp=datetime.fromisoformat(state.timestamp) if state.timestamp else datetime.now(timezone.utc),
                     order_type="limit",
                 ))
-    
+
+    if orders:
+        return OrderListResponse(orders=orders, total=len(orders))
+
     # Fallback to in-process bot instance (local dev)
     bot = _get_bot()
     if bot and bot.strategy and hasattr(bot.strategy, "levels"):
@@ -101,14 +106,14 @@ async def get_orders(
                     amount=level.amount,
                     filled=0.0,
                     status="open",
-                    timestamp=datetime.now(),
+                    timestamp=datetime.now(timezone.utc),
                     order_type="limit",
                 ))
     
     return OrderListResponse(orders=orders, total=len(orders))
 
 
-@router.post("/force-buy", response_model=ForceTradeResponse)
+@router.post("/force-buy", response_model=ForceTradeResponse, dependencies=[Depends(require_api_key)])
 async def force_buy(request: ForceTradeRequest = ForceTradeRequest()):
     """Execute a forced market buy."""
     bot = _get_bot()
@@ -142,7 +147,7 @@ async def force_buy(request: ForceTradeRequest = ForceTradeRequest()):
             return ForceTradeResponse(
                 success=True,
                 message="Paper buy executed",
-                order_id=f"paper_{datetime.now().timestamp()}",
+                order_id=f"paper_{datetime.now(timezone.utc).timestamp()}",
                 price=current_price,
                 amount=amount,
             )
@@ -153,7 +158,7 @@ async def force_buy(request: ForceTradeRequest = ForceTradeRequest()):
         )
 
 
-@router.post("/force-sell", response_model=ForceTradeResponse)
+@router.post("/force-sell", response_model=ForceTradeResponse, dependencies=[Depends(require_api_key)])
 async def force_sell(request: ForceTradeRequest = ForceTradeRequest()):
     """Execute a forced market sell."""
     bot = _get_bot()
@@ -187,7 +192,7 @@ async def force_sell(request: ForceTradeRequest = ForceTradeRequest()):
             return ForceTradeResponse(
                 success=True,
                 message="Paper sell executed",
-                order_id=f"paper_{datetime.now().timestamp()}",
+                order_id=f"paper_{datetime.now(timezone.utc).timestamp()}",
                 price=current_price,
                 amount=amount,
             )
@@ -198,7 +203,7 @@ async def force_sell(request: ForceTradeRequest = ForceTradeRequest()):
         )
 
 
-@router.delete("/{order_id}", response_model=CancelOrderResponse)
+@router.delete("/{order_id}", response_model=CancelOrderResponse, dependencies=[Depends(require_api_key)])
 async def cancel_order(order_id: str = Path(..., description="Order ID to cancel")):
     """Cancel a specific order."""
     bot = _get_bot()

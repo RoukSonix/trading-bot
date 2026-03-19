@@ -63,7 +63,7 @@ class TestFullBidirectionalTradeFlow:
         Session = trade_db
         strategy = both_strategy
 
-        with patch("binance_bot.strategies.grid.SessionLocal", Session):
+        with patch("binance_bot.strategies.grid.get_session", Session):
             # 1. Long buy
             long_buy = Signal(type=SignalType.BUY, price=49500.0, amount=0.01, reason="Long buy")
             result = strategy.execute_paper_trade(long_buy)
@@ -103,7 +103,7 @@ class TestFullBidirectionalTradeFlow:
         """Long buy should create a position with side='long'."""
         Session = trade_db
 
-        with patch("binance_bot.strategies.grid.SessionLocal", Session):
+        with patch("binance_bot.strategies.grid.get_session", Session):
             signal = Signal(type=SignalType.BUY, price=49500.0, amount=0.01, reason="Grid buy")
             strategy = long_strategy
             result = strategy.execute_paper_trade(signal)
@@ -122,7 +122,7 @@ class TestFullBidirectionalTradeFlow:
         """Short sell should create a position with short fields."""
         Session = trade_db
 
-        with patch("binance_bot.strategies.grid.SessionLocal", Session):
+        with patch("binance_bot.strategies.grid.get_session", Session):
             signal = Signal(type=SignalType.SELL, price=50500.0, amount=-0.01, reason="Short sell")
             strategy = short_strategy
             result = strategy.execute_paper_trade(signal)
@@ -145,7 +145,7 @@ class TestFullBidirectionalTradeFlow:
         strategy.setup_grid(50000.0)
         df = make_ohlcv_df(30, base_price=50000.0)
 
-        with patch("binance_bot.strategies.grid.SessionLocal", Session):
+        with patch("binance_bot.strategies.grid.get_session", Session):
             # Price rises to trigger short sell
             signals = strategy.calculate_signals(df, 50600.0)
             assert len(signals) >= 1
@@ -169,7 +169,7 @@ class TestFullBidirectionalTradeFlow:
         strategy = both_strategy
         initial_balance = strategy.paper_balance
 
-        with patch("binance_bot.strategies.grid.SessionLocal", Session):
+        with patch("binance_bot.strategies.grid.get_session", Session):
             # Long cycle: buy low, sell high
             strategy.execute_paper_trade(
                 Signal(type=SignalType.BUY, price=49000.0, amount=0.01, reason="buy")

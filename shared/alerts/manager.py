@@ -130,8 +130,8 @@ class AlertManager:
         Returns:
             True if alert should be sent, False if rate limited
         """
-        now = datetime.now()
-        
+        now = datetime.now(timezone.utc)
+
         # Check per-minute global rate limit
         cutoff = now - timedelta(minutes=1)
         while self._alert_timestamps and self._alert_timestamps[0] < cutoff:
@@ -154,7 +154,7 @@ class AlertManager:
     
     def _record_alert(self, alert_type: str):
         """Record alert for rate limiting."""
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         self._alert_timestamps.append(now)
         self._last_alert_time[alert_type] = now
         self.alerts_sent += 1
@@ -401,7 +401,38 @@ Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
             self._record_alert(alert_key)
         
         return success
-    
+
+    async def send_tp_sl_alert(
+        self,
+        event_type: str,
+        symbol: str,
+        level_price: float,
+        exit_price: float,
+        pnl: float,
+        direction: str = "long",
+        break_even_price: Optional[float] = None,
+    ) -> bool:
+        """Send TP/SL event alert through all configured channels."""
+        if not self.config.alerts_enabled:
+            return False
+
+        if not self._check_rate_limit("tp_sl"):
+            return False
+
+        sent = False
+        if self.config.discord_enabled:
+            sent = await self.discord.send_tp_sl_alert(
+                event_type=event_type,
+                symbol=symbol,
+                level_price=level_price,
+                exit_price=exit_price,
+                pnl=pnl,
+                direction=direction,
+                break_even_price=break_even_price,
+            )
+        self._record_alert("tp_sl")
+        return sent
+
     def start_daily_summary_scheduler(self, callback):
         """Start the daily summary scheduler.
         

@@ -223,10 +223,10 @@ class DiscordAlert:
         
         fields = [{"name": "Symbol", "value": symbol, "inline": True}]
         
-        if current_price:
+        if current_price is not None:
             fields.append({"name": "Price", "value": f"${current_price:,.2f}", "inline": True})
-        
-        if total_value:
+
+        if total_value is not None:
             fields.append({"name": "Portfolio", "value": f"${total_value:,.2f}", "inline": True})
         
         if trades_count is not None:

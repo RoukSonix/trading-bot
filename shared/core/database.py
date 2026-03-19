@@ -2,37 +2,38 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
-from sqlalchemy import create_engine, Column, Integer, Float, Numeric, String, DateTime, BigInteger, Index
+from sqlalchemy import create_engine, event, Column, Integer, Float, Numeric, String, DateTime, BigInteger, Index
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from loguru import logger
 
-# Database setup
-DATA_DIR = Path("data")
-DATA_DIR.mkdir(exist_ok=True)
-DATABASE_URL = f"sqlite:///{DATA_DIR}/trading.db"
+# Lazy-init globals
+_engine = None
+_SessionLocal = None
 
-engine = create_engine(
-    DATABASE_URL,
-    echo=False,
-    connect_args={
-        "timeout": 30,           # Wait up to 30s for lock
-        "check_same_thread": False,
-    },
-    pool_pre_ping=True,
-)
-
-# Enable WAL mode for concurrent reads/writes
-from sqlalchemy import event
-
-@event.listens_for(engine, "connect")
-def set_sqlite_pragma(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA busy_timeout=30000")
-    cursor.close()
-
-SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
+
+
+def get_engine():
+    """Get or create the SQLAlchemy engine (lazy)."""
+    global _engine
+    if _engine is None:
+        data_dir = Path("data")
+        data_dir.mkdir(exist_ok=True)
+        db_url = f"sqlite:///{data_dir}/trading.db"
+        _engine = create_engine(
+            db_url,
+            echo=False,
+            connect_args={"timeout": 30, "check_same_thread": False},
+            pool_pre_ping=True,
+        )
+
+        @event.listens_for(_engine, "connect")
+        def set_sqlite_pragma(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=30000")
+            cursor.close()
+    return _engine
 
 
 class OHLCV(Base):
@@ -112,20 +113,22 @@ class Position(Base):
 
 def init_db():
     """Initialize database tables and auto-migrate missing columns."""
-    Base.metadata.create_all(engine)
+    eng = get_engine()
+    Base.metadata.create_all(eng)
     _auto_migrate()
-    logger.info(f"Database initialized: {DATABASE_URL}")
+    db_url = str(eng.url)
+    logger.info(f"Database initialized: {db_url}")
 
 
 def _auto_migrate():
     """Add any missing columns from SQLAlchemy models to existing tables.
-    
+
     Prevents 'no such column' errors when new columns are added to models
     but the existing SQLite DB doesn't have them yet.
     """
     import sqlite3
-    db_path = DATABASE_URL.replace("sqlite:///", "")
-    
+    db_path = str(get_engine().url).replace("sqlite:///", "")
+
     try:
         conn = sqlite3.connect(db_path)
         for table in Base.metadata.sorted_tables:
@@ -152,7 +155,10 @@ def _auto_migrate():
 
 def get_session() -> Session:
     """Get database session."""
-    return SessionLocal()
+    global _SessionLocal
+    if _SessionLocal is None:
+        _SessionLocal = sessionmaker(bind=get_engine())
+    return _SessionLocal()
 
 
 class TradeLog(Base):

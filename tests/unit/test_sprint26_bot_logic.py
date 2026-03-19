@@ -285,7 +285,7 @@ class TestP1Strat1DuplicateLevels:
             amount_per_level=amount,
             direction="both",
         )
-        with patch("binance_bot.strategies.grid.SessionLocal"), \
+        with patch("binance_bot.strategies.grid.get_session"), \
              patch("binance_bot.strategies.grid.TPSLCalculator"), \
              patch("binance_bot.strategies.grid.TrailingStopManager"), \
              patch("binance_bot.strategies.grid.BreakEvenManager"):
@@ -332,7 +332,7 @@ class TestP1Strat2CloseLevelRecording:
             grid_spacing_pct=1.0,
             amount_per_level=0.001,
         )
-        with patch("binance_bot.strategies.grid.SessionLocal"), \
+        with patch("binance_bot.strategies.grid.get_session"), \
              patch("binance_bot.strategies.grid.TPSLCalculator"), \
              patch("binance_bot.strategies.grid.TrailingStopManager"), \
              patch("binance_bot.strategies.grid.BreakEvenManager"):

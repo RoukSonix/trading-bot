@@ -1,6 +1,7 @@
 """Risk metrics and dashboard."""
+from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 import statistics
 from loguru import logger
@@ -36,7 +37,7 @@ class RiskMetrics:
     """
     
     trades: List[TradeRecord] = field(default_factory=list)
-    equity_curve: List[tuple] = field(default_factory=list)  # (timestamp, balance)
+    equity_curve: deque = field(default_factory=lambda: deque(maxlen=10000))  # (timestamp, balance)
     initial_balance: float = 10000.0
     risk_free_rate: float = 0.04  # 4% annual risk-free rate
     
@@ -57,7 +58,7 @@ class RiskMetrics:
         duration = (exit_time - entry_time) if entry_time and exit_time else timedelta(0)
         
         trade = TradeRecord(
-            timestamp=exit_time or datetime.now(),
+            timestamp=exit_time or datetime.now(timezone.utc),
             symbol=symbol,
             side=side,
             entry_price=entry_price,
@@ -71,7 +72,7 @@ class RiskMetrics:
     
     def update_equity(self, balance: float):
         """Update equity curve."""
-        self.equity_curve.append((datetime.now(), balance))
+        self.equity_curve.append((datetime.now(timezone.utc), balance))
     
     @property
     def total_trades(self) -> int:

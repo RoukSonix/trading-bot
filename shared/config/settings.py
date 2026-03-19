@@ -160,6 +160,12 @@ class Settings(BaseSettings):
         description="Default take-profit percentage"
     )
 
+    # Paper trading
+    paper_initial_balance: float = Field(
+        default=10000.0,
+        description="Paper trading initial balance (USDT)"
+    )
+
     # Logging
     log_level: str = Field(default="INFO", description="Logging level")
     

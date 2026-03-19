@@ -1,10 +1,12 @@
 """Bot control API endpoints — file-based IPC for Docker."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+
+from shared.api.auth import require_api_key
 
 from shared.core.state import read_state, write_command
 
@@ -27,7 +29,7 @@ class BotConfigResponse(BaseModel):
     risk_tolerance: str
 
 
-@router.post("/pause", response_model=BotControlResponse)
+@router.post("/pause", response_model=BotControlResponse, dependencies=[Depends(require_api_key)])
 async def pause_bot():
     """Send pause command to bot via file IPC."""
     write_command("pause")
@@ -36,11 +38,11 @@ async def pause_bot():
         success=True,
         message="Pause command sent",
         state=state.state if state else "unknown",
-        timestamp=datetime.now(),
+        timestamp=datetime.now(timezone.utc),
     )
 
 
-@router.post("/resume", response_model=BotControlResponse)
+@router.post("/resume", response_model=BotControlResponse, dependencies=[Depends(require_api_key)])
 async def resume_bot():
     """Send resume command to bot via file IPC."""
     write_command("resume")
@@ -49,11 +51,11 @@ async def resume_bot():
         success=True,
         message="Resume command sent",
         state=state.state if state else "unknown",
-        timestamp=datetime.now(),
+        timestamp=datetime.now(timezone.utc),
     )
 
 
-@router.post("/stop", response_model=BotControlResponse)
+@router.post("/stop", response_model=BotControlResponse, dependencies=[Depends(require_api_key)])
 async def stop_bot():
     """Send stop command to bot via file IPC."""
     write_command("stop")
@@ -62,7 +64,7 @@ async def stop_bot():
         success=True,
         message="Stop command sent",
         state=state.state if state else "unknown",
-        timestamp=datetime.now(),
+        timestamp=datetime.now(timezone.utc),
     )
 
 
