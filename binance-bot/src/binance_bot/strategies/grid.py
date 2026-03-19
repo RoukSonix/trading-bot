@@ -16,7 +16,7 @@ import pandas as pd
 from loguru import logger
 
 from binance_bot.strategies.base import BaseStrategy, Signal, SignalType, GridLevel
-from shared.core.database import SessionLocal, Trade, Position
+from shared.core.database import get_session, Trade, Position
 from shared.risk.tp_sl import TPSLCalculator
 from shared.risk.trailing_stop import TrailingStopManager
 from shared.risk.break_even import BreakEvenManager
@@ -90,7 +90,8 @@ class GridStrategy(BaseStrategy):
         self.realized_pnl: float = 0.0
 
         # Paper trading state
-        self.paper_balance: float = 10000.0  # Starting USDT
+        from shared.config import settings
+        self.paper_balance: float = settings.paper_initial_balance
         self.paper_holdings: float = 0.0     # BTC holdings (long)
         self.paper_trades: list[dict] = []
 
@@ -777,7 +778,7 @@ class GridStrategy(BaseStrategy):
 
     def _save_trade_to_db(self, signal: Signal, is_short: bool, abs_amount: float, cost: float):
         """Save paper trade to database."""
-        db = SessionLocal()
+        db = get_session()
         try:
             side_str = signal.type.value
             direction = "short" if is_short else "long"

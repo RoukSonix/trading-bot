@@ -320,7 +320,7 @@ def _tab_overview(status):
     max_dd = _compute_max_drawdown(history)
 
     # ── Account Balance ──
-    initial_balance = 10000.0
+    initial_balance = float(os.getenv("PAPER_INITIAL_BALANCE", "10000.0"))
     account_balance = initial_balance + total_pnl + unrealized
     balance_change = account_balance - initial_balance
     balance_pct = (balance_change / initial_balance * 100) if initial_balance > 0 else 0

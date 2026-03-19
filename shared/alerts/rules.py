@@ -2,7 +2,7 @@
 
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional, Callable, Awaitable, Any
 
@@ -55,12 +55,12 @@ class AlertRule:
             return False
         if self.last_triggered is None:
             return True
-        elapsed = datetime.now() - self.last_triggered
+        elapsed = datetime.now(timezone.utc) - self.last_triggered
         return elapsed >= timedelta(minutes=self.cooldown_minutes)
     
     def mark_triggered(self):
         """Mark rule as triggered."""
-        self.last_triggered = datetime.now()
+        self.last_triggered = datetime.now(timezone.utc)
 
 
 @dataclass
@@ -80,7 +80,7 @@ class AlertRulesEngine:
         self._consecutive_losses: int = 0
         self._daily_pnl: float = 0.0
         self._daily_start_balance: float = 0.0
-        self._last_connection_time: datetime = datetime.now()
+        self._last_connection_time: datetime = datetime.now(timezone.utc)
         self._current_pnl: float = 0.0
         
         # Callback for sending alerts
@@ -193,7 +193,7 @@ class AlertRulesEngine:
         Args:
             price: Current price
         """
-        self._price_history.append(PricePoint(price=price, timestamp=datetime.now()))
+        self._price_history.append(PricePoint(price=price, timestamp=datetime.now(timezone.utc)))
     
     def record_trade(self, pnl: float):
         """Record a trade result.
@@ -221,7 +221,7 @@ class AlertRulesEngine:
     
     def update_connection(self):
         """Update last successful connection time."""
-        self._last_connection_time = datetime.now()
+        self._last_connection_time = datetime.now(timezone.utc)
     
     def set_pnl(self, pnl: float):
         """Set current PnL directly.
@@ -291,10 +291,10 @@ class AlertRulesEngine:
             return None
         
         # Get price from N minutes ago
-        cutoff = datetime.now() - timedelta(minutes=rule.price_window_minutes)
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=rule.price_window_minutes)
         old_price = None
         
-        for point in self._price_history:
+        for point in reversed(self._price_history):
             if point.timestamp <= cutoff:
                 old_price = point.price
                 break
@@ -395,7 +395,7 @@ class AlertRulesEngine:
         if not rule.connection_timeout_seconds:
             return None
         
-        elapsed = (datetime.now() - self._last_connection_time).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - self._last_connection_time).total_seconds()
         
         if elapsed >= rule.connection_timeout_seconds:
             return {

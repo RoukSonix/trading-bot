@@ -1,6 +1,6 @@
 """Position API endpoints."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Query
@@ -88,7 +88,7 @@ async def get_position(symbol: str):
                 amount=0,
                 unrealized_pnl=0,
                 realized_pnl=0,
-                updated_at=datetime.now(),
+                updated_at=datetime.now(timezone.utc),
             )
         
         return PositionResponse(

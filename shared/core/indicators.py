@@ -26,6 +26,8 @@ class Indicators:
             DataFrame with OHLCV columns and datetime index
         """
         df = pd.DataFrame(candles)
+        if df.empty:
+            return df
 
         # Convert timestamp to datetime
         if "timestamp" in df.columns:

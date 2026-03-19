@@ -8,7 +8,7 @@ Provides emergency shutdown capability for the trading bot:
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -63,7 +63,7 @@ class EmergencyStop:
             if not self._triggered:
                 self._triggered = True
                 self._trigger_reason = reason
-                self._trigger_time = datetime.now()
+                self._trigger_time = datetime.now(timezone.utc)
                 logger.critical(f"🚨 EMERGENCY STOP FILE DETECTED: {reason}")
             
             return True
@@ -84,7 +84,7 @@ class EmergencyStop:
         
         self._triggered = True
         self._trigger_reason = reason
-        self._trigger_time = datetime.now()
+        self._trigger_time = datetime.now(timezone.utc)
         
         logger.critical(f"🚨 EMERGENCY STOP TRIGGERED: {reason}")
         
@@ -106,7 +106,7 @@ class EmergencyStop:
             "success": False,
             "positions_closed": [],
             "errors": [],
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         
         if not self.exchange_client:
@@ -205,7 +205,7 @@ class EmergencyStop:
             "triggered": self._triggered,
             "trigger_reason": self._trigger_reason,
             "trigger_time": self._trigger_time.isoformat() if self._trigger_time else None,
-            "saved_at": datetime.now().isoformat(),
+            "saved_at": datetime.now(timezone.utc).isoformat(),
         }
         
         # Add strategy state if available

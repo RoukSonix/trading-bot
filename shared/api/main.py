@@ -3,7 +3,7 @@
 import os
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -19,7 +19,7 @@ from shared.api.routes import (
     candles_router,
 )
 from sqlalchemy import text
-from shared.core.database import init_db, engine as db_engine
+from shared.core.database import init_db, get_engine
 from shared.core.state import read_state, BotState as SharedBotState
 from shared.alerts import (
     AlertConfig,
@@ -54,12 +54,15 @@ app = FastAPI(
 setup_metrics_endpoint(app)
 
 # CORS for Streamlit frontend
+_cors_origins = os.getenv(
+    "CORS_ORIGINS", "http://localhost:8501,http://localhost:3000"
+).split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
 )
 
 
@@ -235,12 +238,12 @@ async def get_status():
             symbol="BTC/USDT",
             ticks=0,
             errors=0,
-            timestamp=datetime.now(),
+            timestamp=datetime.now(timezone.utc),
         )
     
     uptime = None
     if bot.start_time:
-        uptime = (datetime.now() - bot.start_time).total_seconds()
+        uptime = (datetime.now(timezone.utc) - bot.start_time).total_seconds()
     
     current_price = None
     if bot.strategy and bot.strategy.center_price:
@@ -254,7 +257,7 @@ async def get_status():
         ticks=bot.ticks,
         errors=bot.errors,
         current_price=current_price,
-        timestamp=datetime.now(),
+        timestamp=datetime.now(timezone.utc),
     )
 
 
@@ -330,7 +333,7 @@ async def health_check():
     """
     return HealthResponse(
         status="healthy",
-        timestamp=datetime.now(),
+        timestamp=datetime.now(timezone.utc),
     )
 
 
@@ -343,7 +346,7 @@ async def liveness_check():
     """
     return HealthResponse(
         status="alive",
-        timestamp=datetime.now(),
+        timestamp=datetime.now(timezone.utc),
     )
 
 
@@ -362,8 +365,7 @@ async def readiness_check(response: Response):
     
     # Check 1: Database connectivity
     try:
-        # Use db_engine directly
-        with db_engine.connect() as conn:
+        with get_engine().connect() as conn:
             conn.execute(text("SELECT 1"))
         checks["database"] = {"status": "ok"}
     except Exception as e:
@@ -408,7 +410,7 @@ async def readiness_check(response: Response):
     return ReadinessResponse(
         status="ready" if all_healthy else "not_ready",
         checks=checks,
-        timestamp=datetime.now(),
+        timestamp=datetime.now(timezone.utc),
     )
 
 

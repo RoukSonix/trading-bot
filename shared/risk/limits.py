@@ -1,6 +1,7 @@
 """Risk limits - daily loss, max drawdown, etc."""
+from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from enum import Enum
 from typing import List, Optional
 from loguru import logger
@@ -78,7 +79,7 @@ class RiskLimits:
     halt_reason: str = ""
     
     # History
-    trade_history: List[dict] = field(default_factory=list)
+    trade_history: deque = field(default_factory=lambda: deque(maxlen=1000))
     
     def __post_init__(self):
         """Initialize daily stats."""
@@ -161,7 +162,7 @@ class RiskLimits:
         # Record to history
         if trade_info:
             trade_info["pnl"] = pnl
-            trade_info["timestamp"] = datetime.now()
+            trade_info["timestamp"] = datetime.now(timezone.utc)
             self.trade_history.append(trade_info)
         
         # Check limits after trade

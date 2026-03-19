@@ -1,6 +1,6 @@
 """Stop-loss and take-profit management."""
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, Dict, List
 from loguru import logger
@@ -36,7 +36,7 @@ class StopLevel:
             
         if triggered:
             self.triggered = True
-            self.triggered_at = datetime.now()
+            self.triggered_at = datetime.now(timezone.utc)
             
         return triggered
 
@@ -48,7 +48,7 @@ class Position:
     entry_price: float
     amount: float
     is_long: bool = True
-    entry_time: datetime = field(default_factory=datetime.now)
+    entry_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     stop_loss: Optional[StopLevel] = None
     take_profit: Optional[StopLevel] = None
@@ -231,7 +231,7 @@ class StopLossManager:
                 )
                 if tp_triggered:
                     position.take_profit.triggered = True
-                    position.take_profit.triggered_at = datetime.now()
+                    position.take_profit.triggered_at = datetime.now(timezone.utc)
                     pnl = self._calculate_pnl(position, current_price)
                     logger.info(
                         f"🎯 TAKE-PROFIT triggered: {pid} @ ${current_price:.2f}, "

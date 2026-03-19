@@ -1,6 +1,6 @@
 """Candlestick data API endpoints."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Query
@@ -112,7 +112,7 @@ async def get_candles(
     
     # Generate mock data if no exchange available
     base_price = 85000.0
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     
     for i in range(limit):
         # Generate somewhat realistic looking data
@@ -160,7 +160,7 @@ async def get_current_price(
         return {
             "symbol": symbol,
             "price": state.current_price,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "source": "state",
         }
     
@@ -170,7 +170,7 @@ async def get_current_price(
         return {
             "symbol": symbol,
             "price": bot.strategy.center_price,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "source": "bot",
         }
     
@@ -185,7 +185,7 @@ async def get_current_price(
                 "symbol": symbol,
                 "price": ticker.get("last", 0),
                 "change_24h": ticker.get("percentage", 0),
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "source": "exchange",
             }
         finally:
@@ -197,6 +197,6 @@ async def get_current_price(
     return {
         "symbol": symbol,
         "price": 85000.0,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "source": "mock",
     }

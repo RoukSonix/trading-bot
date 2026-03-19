@@ -10,7 +10,7 @@ import asyncio
 import json
 import signal
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Optional
@@ -225,8 +225,8 @@ class TradingBot:
         paper = status.get("paper_trading", {})
         
         # Calculate stats
-        start_balance = 10000.0  # Initial balance
-        end_balance = paper.get("total_value", 10000.0)
+        start_balance = settings.paper_initial_balance
+        end_balance = paper.get("total_value", settings.paper_initial_balance)
         total_trades = paper.get("trades_count", 0)
         
         # Get from risk metrics if available
@@ -271,7 +271,7 @@ class TradingBot:
         exchange_client.connect()
         
         # Initialize strategy
-        initial_balance = 10000.0  # Paper trading balance
+        initial_balance = settings.paper_initial_balance
         self.risk_limits.set_initial_balance(initial_balance)
         self.risk_metrics.initial_balance = initial_balance
         self.risk_metrics.update_equity(initial_balance)
@@ -293,7 +293,7 @@ class TradingBot:
         
         # Start main loop
         self.running = True
-        self.start_time = datetime.now()
+        self.start_time = datetime.now(timezone.utc)
         
         # Send startup alert
         ticker = exchange_client.get_ticker(self.symbol)
@@ -326,7 +326,7 @@ class TradingBot:
         await self.alert_manager.send_status_alert(
             status="stopped",
             symbol=self.symbol,
-            total_value=paper.get("total_value", 10000),
+            total_value=paper.get("total_value", settings.paper_initial_balance),
             trades_count=paper.get("trades_count", 0),
             reason="Graceful shutdown",
         )
@@ -365,7 +365,7 @@ class TradingBot:
             news_sentiment_context=self._news_sentiment_context,
         )
         
-        self.last_entry_check = datetime.now()
+        self.last_entry_check = datetime.now(timezone.utc)
         
         if should_trade:
             if self.state != BotState.TRADING:
@@ -396,7 +396,7 @@ class TradingBot:
             else:
                 logger.info(f"⏳ Still waiting: {reason[:80]}...")
         
-        self.last_review = datetime.now()
+        self.last_review = datetime.now(timezone.utc)
     
     async def _fetch_market_data(self, ticker: Optional[dict] = None) -> dict:
         """Fetch current market data."""
@@ -542,7 +542,7 @@ class TradingBot:
             await self._check_entry_conditions()
             return
         
-        if datetime.now() - self.last_entry_check >= self.entry_check_interval:
+        if datetime.now(timezone.utc) - self.last_entry_check >= self.entry_check_interval:
             await self._check_entry_conditions()
     
     async def _execute_trading(self, current_price: float, ticker: Optional[dict] = None):
@@ -659,12 +659,12 @@ class TradingBot:
                 
                 # Update equity curve
                 paper_status = self.strategy.get_status().get("paper_trading", {})
-                total_value = paper_status.get("total_value", 10000)
+                total_value = paper_status.get("total_value", settings.paper_initial_balance)
                 self.risk_limits.update_balance(total_value)
                 self.risk_metrics.update_equity(total_value)
-                
+
                 # Update rules engine PnL
-                self.rules_engine.set_pnl(total_value - 10000)
+                self.rules_engine.set_pnl(total_value - settings.paper_initial_balance)
                 
                 logger.info(
                     f"⚡ {signal.type.value.upper()} "
@@ -698,7 +698,7 @@ class TradingBot:
             pass  # First review: trigger immediately
         else:
             interval = timedelta(minutes=self.config.review_interval_minutes)
-            if datetime.now() - self.last_review < interval:
+            if datetime.now(timezone.utc) - self.last_review < interval:
                 return
         
         data = await self._fetch_market_data()
@@ -710,7 +710,7 @@ class TradingBot:
             unrealized_pnl=0,
         )
         
-        self.last_review = datetime.now()
+        self.last_review = datetime.now(timezone.utc)
         
         # Handle AI decision
         if review["action"] == "STOP":
@@ -753,7 +753,7 @@ class TradingBot:
 
     async def _maybe_fetch_news(self):
         """Fetch news and update sentiment context periodically (~15 min)."""
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         if self._last_news_fetch is not None:
             if now - self._last_news_fetch < self._news_fetch_interval:
                 return
@@ -784,7 +784,7 @@ class TradingBot:
         status = self.strategy.get_status() if self.strategy else {}
         paper = status.get("paper_trading", {})
         
-        runtime = datetime.now() - self.start_time if self.start_time else timedelta()
+        runtime = datetime.now(timezone.utc) - self.start_time if self.start_time else timedelta()
         
         state_emoji = {
             BotState.WAITING: "⏳",
@@ -800,7 +800,7 @@ class TradingBot:
             f"📊 Status | {state_emoji} {self.state.value.upper()} | "
             f"Price: ${current_price:,.2f} | "
             f"Trades: {paper.get('trades_count', 0)} | "
-            f"Value: ${paper.get('total_value', 10000):,.2f} | "
+            f"Value: ${paper.get('total_value', settings.paper_initial_balance):,.2f} | "
             f"Strategy: {active_strat} | Regime: {regime} | "
             f"Runtime: {runtime}"
         )
@@ -813,7 +813,7 @@ class TradingBot:
         status = self.strategy.get_status()
         paper = status.get("paper_trading", {})
 
-        runtime = datetime.now() - self.start_time if self.start_time else timedelta()
+        runtime = datetime.now(timezone.utc) - self.start_time if self.start_time else timedelta()
         
         logger.info("")
         logger.info("=" * 60)
@@ -828,8 +828,8 @@ class TradingBot:
         logger.info(f"Final USDT: ${paper['balance_usdt']:,.2f}")
         logger.info(f"Total Value: ${paper['total_value']:,.2f}")
         
-        profit = paper["total_value"] - 10000
-        profit_pct = (profit / 10000) * 100
+        profit = paper["total_value"] - settings.paper_initial_balance
+        profit_pct = (profit / settings.paper_initial_balance) * 100
         logger.info(f"Profit: ${profit:+,.2f} ({profit_pct:+.2f}%)")
         logger.info("=" * 60)
         
@@ -862,7 +862,7 @@ class TradingBot:
         try:
             uptime = None
             if self.start_time:
-                uptime = (datetime.now() - self.start_time).total_seconds()
+                uptime = (datetime.now(timezone.utc) - self.start_time).total_seconds()
             
             # Get grid levels
             grid_levels = []
@@ -879,16 +879,17 @@ class TradingBot:
                     })
             
             # Get paper trading stats
-            paper_balance = 10000.0
+            _ib = settings.paper_initial_balance
+            paper_balance = _ib
             paper_holdings = 0.0
-            paper_total = 10000.0
+            paper_total = _ib
             paper_trades = 0
             if self.strategy:
                 status = self.strategy.get_status()
                 paper = status.get("paper_trading", {})
-                paper_balance = paper.get("balance_usdt", 10000.0)
+                paper_balance = paper.get("balance_usdt", _ib)
                 paper_holdings = paper.get("holdings_btc", 0.0)
-                paper_total = paper.get("total_value", 10000.0)
+                paper_total = paper.get("total_value", _ib)
                 paper_trades = paper.get("trades_count", 0)
             
             state = SharedBotState(

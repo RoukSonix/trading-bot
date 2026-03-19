@@ -8,13 +8,16 @@ import json
 import os
 import tempfile
 from dataclasses import dataclass, asdict, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 
 # Default state file path
 STATE_FILE = Path("data/bot_status.json")
+
+# Paper trading default balance (overridden by PAPER_INITIAL_BALANCE env var)
+_DEFAULT_BALANCE = 10000.0
 
 
 @dataclass
@@ -63,16 +66,16 @@ class BotState:
     positions: list = field(default_factory=list)
     
     # Paper trading stats
-    paper_balance_usdt: float = 10000.0
+    paper_balance_usdt: float = _DEFAULT_BALANCE
     paper_holdings_btc: float = 0.0
-    paper_total_value: float = 10000.0
+    paper_total_value: float = _DEFAULT_BALANCE
     paper_trades_count: int = 0
     
     # Strategy engine status
     strategy_engine: dict = field(default_factory=dict)
 
     # Timestamp
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -158,25 +161,33 @@ COMMAND_FILE = Path("data/bot_command.json")
 
 
 def write_command(command: str, path: Optional[Path] = None) -> None:
-    """Write a command for the bot to pick up."""
+    """Write a command for the bot to pick up (atomic)."""
+    from datetime import timezone
     path = path or COMMAND_FILE
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump({"command": command, "timestamp": datetime.now().isoformat()}, f)
+    data = json.dumps({"command": command, "timestamp": datetime.now(timezone.utc).isoformat()})
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(data)
+        os.replace(tmp_path, str(path))
+    except Exception:
+        os.unlink(tmp_path)
+        raise
 
 
 def read_command(path: Optional[Path] = None) -> Optional[str]:
     """Read and consume a pending command. Returns command string or None."""
     path = path or COMMAND_FILE
     path = Path(path)
-    if not path.exists():
-        return None
     try:
         with open(path, "r") as f:
             data = json.load(f)
-        path.unlink()  # consume command
+        path.unlink(missing_ok=True)
         return data.get("command")
+    except FileNotFoundError:
+        return None
     except (json.JSONDecodeError, KeyError):
         path.unlink(missing_ok=True)
         return None

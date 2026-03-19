@@ -1,6 +1,6 @@
 # Project Status
 
-**Last updated:** 2026-03-17
+**Last updated:** 2026-03-19
 
 ## Current State
 
@@ -123,13 +123,44 @@ Key changes:
 - Strategy engine status persisted in shared state file
 - 33 new tests in `tests/unit/test_sprint27_risk.py`
 
+### Sprint 28 — Alerts, API & Data Fixes (COMPLETED)
+**Date:** 2026-03-19
+**Branch:** `feature/sprint-28-alerts-api`
+**Issues fixed:** 15 (7 P1 + 8 P2)
+
+| Issue | Severity | File(s) | Fix |
+|-------|----------|---------|-----|
+| P1-ALERT-1 | P1 | `alerts/manager.py` | `datetime.now()` → `datetime.now(timezone.utc)` in rate limiter |
+| P1-ALERT-2 | P1 | `alerts/rules.py` | `reversed()` iteration for most-recent price before cutoff |
+| P1-ALERT-3 | P1 | `alerts/manager.py` | New `send_tp_sl_alert()` routed through AlertManager |
+| P1-CORE-1 | P1 | `core/state.py` | TOCTOU fix: exception-based file read instead of exists() check |
+| P1-CORE-2 | P1 | `core/state.py` | Atomic write via tempfile + os.replace |
+| P1-CORE-3 | P1 | `core/indicators.py` | Early return for empty candle list in `to_dataframe()` |
+| P1-CORE-4 | P1 | `core/database.py` | Lazy init: `get_engine()` / `get_session()` factories |
+| P1-RISK-1 | P1 | `api/routes/orders.py` | Early return after state-file orders (no duplicate fallback) |
+| P2-CORE-1 | P2 | 13+ files | All bare `datetime.now()` → `datetime.now(timezone.utc)` |
+| P2-API-3 | P2 | `api/main.py` | CORS restricted to env-configurable origins |
+| P2-API-6 | P2 | `api/auth.py` + routes | API key auth on write endpoints |
+| P2-ALERT-1 | P2 | `alerts/discord.py` | `if current_price:` → `if current_price is not None:` |
+| P2-RISK-1 | P2 | `risk/limits.py` | `trade_history` bounded to deque(maxlen=1000) |
+| P2-RISK-2 | P2 | `risk/metrics.py` | `equity_curve` bounded to deque(maxlen=10000) |
+| P2-BOT-1 | P2 | `config/settings.py` + bot/dashboard | `paper_initial_balance` from settings, not hardcoded |
+
+Key changes:
+- All datetime operations now timezone-aware (UTC) across entire codebase
+- Database module no longer creates dirs/connections at import time
+- File-based IPC is race-condition-free (atomic write + exception-based read)
+- CORS and API auth properly secured
+- Memory leak vectors eliminated (bounded deques for trade history + equity curve)
+- 31 new tests in `tests/unit/test_sprint28_alerts_api.py`
+
 ### Current Sprint Plan (24-31)
 Based on Audit V2 (118 issues found):
 - **Sprint 24:** P0 runtime crash fixes ✅
 - **Sprint 25:** Jesse bot fixes ✅
 - **Sprint 26:** Bot logic & state machine ✅
 - **Sprint 27:** Risk management fixes ✅
-- **Sprint 28:** Alerts, API & data consistency
+- **Sprint 28:** Alerts, API & data consistency ✅
 - **Sprint 29:** Architecture & decoupling
 - **Sprint 30:** Code quality & cleanup
 - **Sprint 31:** Simplification + full regression
