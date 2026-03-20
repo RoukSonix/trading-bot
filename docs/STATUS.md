@@ -12,7 +12,7 @@
 - Total trades: 89 (paper)
 - Strategies: Grid, Momentum, MeanReversion, Breakout (auto-selected by regime)
 - Indicators: 50+ (trend, momentum, volatility, volume, support/resistance, patterns)
-- Tests: 652
+- Tests: 681
 - Total commits: 120+
 - Codebase: ~14,500 lines Python
 
@@ -162,7 +162,7 @@ Based on Audit V2 (118 issues found):
 - **Sprint 27:** Risk management fixes ✅
 - **Sprint 28:** Alerts, API & data consistency ✅
 - **Sprint 29:** Architecture & decoupling ✅
-- **Sprint 30:** Code quality & cleanup
+- **Sprint 30:** Code quality & cleanup ✅
 - **Sprint 31:** Simplification + full regression
 
 See `docs/SPRINT_PLAN.md` for details.
@@ -192,6 +192,40 @@ Key changes:
 - Negation patterns like "not bullish" no longer false-positive as bullish
 - Grid indicator calculations consolidated into `shared/indicators/` (net ~50 lines removed)
 - 45 new tests in `tests/unit/test_sprint29_architecture.py`
+
+### Sprint 30 — Code Quality & Cleanup (COMPLETED)
+**Date:** 2026-03-20
+**Branch:** `feature/sprint-30-cleanup`
+**Issues fixed:** 15 (13 P3 + 1 P1 + 1 P2) — 3 audit claims validated as invalid
+
+| Issue | Severity | File(s) | Fix |
+|-------|----------|---------|-----|
+| P3-BOT-1 | P3 | `bot.py` | Removed unused `read_state` import, added `read_command` at file level |
+| P3-BOT-2 | P3 | `bot.py` | Removed unused `old_state` variable |
+| P3-BOT-3 | P3 | `bot.py` | Moved `read_command` import from inside loop to file level |
+| P3-BOT-4 | P3 | `bot.py` | Removed duplicate `_write_shared_state(current_price=None)` call |
+| P3-STRAT-1 | P3 | `data_collector.py`, `position_manager.py` | Removed 4 unused imports (`delete`, `field`, 2× `datetime`) |
+| P3-STRAT-2 | P3 | `position_manager.py` | Removed unused `pnl_color` variable |
+| P3-ALERT-2 | P3 | `alerts/discord.py`, `alerts/manager.py` | Added `trades_list` param propagation to Discord adapter |
+| P3-API-2 | P3 | `api/routes/orders.py` | Extracted `_force_trade()` helper to deduplicate force_buy/force_sell |
+| P3-API-3 | P3 | `risk/metrics.py` | Extracted `_compute_drawdowns()` to deduplicate drawdown computation |
+| P3-BACK-1 | P3 | `backtest/charts.py` | Removed unused `colors` variable |
+| P3-BACK-2 | P3 | `backtest/charts.py` | Removed unused `numpy` import |
+| P3-JESSE-1 | P3 | `AIGridStrategy/__init__.py` | Removed duplicate `logger` assignment |
+| P3-JESSE-2 | P3 | `AIGridStrategy/ai_mixin.py` | Replaced deprecated `asyncio.get_event_loop()` with `get_running_loop()` |
+| P3-JESSE-3 | P3 | `live_trader.py` | Removed unused `atr` parameter from `setup_grid` |
+| P1-MON-1 | P1 | `monitoring/metrics.py` | Removed `__new__` singleton, kept `get_metrics()` factory |
+| P2-CORE-4 | P2 | `core/database.py` | Removed duplicate `index=True` on `TradeLog.timestamp` |
+
+Key changes:
+- Dead code, unused imports, and unused variables removed across 12 files
+- Duplicate logic refactored with DRY helper methods (force trades, drawdowns)
+- Singleton pattern simplified (factory function only)
+- Deprecated asyncio API replaced
+- Duplicate database index removed
+- 3 invalid audit claims documented (P3-STRAT-1 grid.py, P3-API-1, P3-ALERT-1)
+- 29 new tests in `tests/unit/test_sprint30_cleanup.py`
+- Tests: 681 (all passing)
 
 ### Known Issues
 See `docs/AUDIT_V2.md` for full list (118 items, P0-P3).

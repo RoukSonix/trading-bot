@@ -1,8 +1,7 @@
 """Data collection and storage."""
 
-from datetime import datetime
 from typing import Optional
-from sqlalchemy import select, delete
+from sqlalchemy import select
 from loguru import logger
 
 from shared.core.database import get_session, OHLCV, init_db

@@ -293,6 +293,7 @@ class DiscordAlert:
         max_drawdown: float,
         best_trade: Optional[float] = None,
         worst_trade: Optional[float] = None,
+        trades_list: Optional[list] = None,
     ) -> bool:
         """Send daily trading summary.
         
@@ -333,7 +334,10 @@ class DiscordAlert:
         
         if worst_trade is not None:
             fields.append({"name": "Worst Trade", "value": f"${worst_trade:+,.2f}", "inline": True})
-        
+
+        if trades_list:
+            fields.append({"name": "Trades Count", "value": str(len(trades_list)), "inline": True})
+
         embed = {
             "title": f"📊 Daily Summary - {datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
             "color": color,

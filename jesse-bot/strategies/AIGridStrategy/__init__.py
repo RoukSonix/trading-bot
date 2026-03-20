@@ -33,8 +33,6 @@ except ImportError:
     export_state = None
     _HAS_STATE_PROVIDER = False
 
-logger = logging.getLogger(__name__)
-
 
 class AIGridStrategy(Strategy):
     """

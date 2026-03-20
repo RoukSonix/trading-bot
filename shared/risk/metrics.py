@@ -129,43 +129,35 @@ class RiskMetrics:
             return 99.99 if gross_profit > 0 else 0.0
         return gross_profit / gross_loss
     
-    @property
-    def max_drawdown(self) -> float:
-        """
-        Maximum drawdown from equity curve.
-        """
+    def _compute_drawdowns(self) -> tuple[float, float]:
+        """Compute max drawdown percentage and absolute amount from equity curve."""
         if len(self.equity_curve) < 2:
-            return 0.0
-        
+            return 0.0, 0.0
+
         balances = [b for _, b in self.equity_curve]
         peak = balances[0]
-        max_dd = 0.0
-        
+        max_dd_pct = 0.0
+        max_dd_amt = 0.0
+
         for balance in balances:
             if balance > peak:
                 peak = balance
-            dd = (peak - balance) / peak if peak > 0 else 0
-            max_dd = max(max_dd, dd)
-        
-        return max_dd
-    
+            dd_pct = (peak - balance) / peak if peak > 0 else 0
+            dd_amt = peak - balance
+            max_dd_pct = max(max_dd_pct, dd_pct)
+            max_dd_amt = max(max_dd_amt, dd_amt)
+
+        return max_dd_pct, max_dd_amt
+
+    @property
+    def max_drawdown(self) -> float:
+        """Maximum drawdown from equity curve."""
+        return self._compute_drawdowns()[0]
+
     @property
     def max_drawdown_amount(self) -> float:
         """Maximum drawdown in currency."""
-        if len(self.equity_curve) < 2:
-            return 0.0
-        
-        balances = [b for _, b in self.equity_curve]
-        peak = balances[0]
-        max_dd = 0.0
-        
-        for balance in balances:
-            if balance > peak:
-                peak = balance
-            dd = peak - balance
-            max_dd = max(max_dd, dd)
-        
-        return max_dd
+        return self._compute_drawdowns()[1]
     
     def sharpe_ratio(self, period_days: int = 365) -> float:
         """

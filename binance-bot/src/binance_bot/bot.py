@@ -23,7 +23,7 @@ from shared.core.indicators import Indicators
 from binance_bot.strategies import AIGridStrategy, AIGridConfig, SignalType
 from shared.risk import PositionSizer, SizingMethod, RiskLimits, RiskMetrics, StopLossManager
 from binance_bot.core.emergency import EmergencyStop
-from shared.core.state import BotState as SharedBotState, write_state, read_state
+from shared.core.state import BotState as SharedBotState, write_state, read_command
 from shared.vector_db.news_fetcher import NewsFetcher
 from shared.vector_db.sentiment import SentimentAnalyzer
 from shared.monitoring.metrics import get_metrics as get_trading_metrics
@@ -371,7 +371,6 @@ class TradingBot:
             if self.state != BotState.TRADING:
                 logger.info(f"✅ Market conditions good: {reason}")
                 logger.info("📈 Switching to TRADING mode")
-                old_state = self.state
                 self.state = BotState.TRADING
                 self.strategy.print_grid()
                 
@@ -443,11 +442,7 @@ class TradingBot:
                 self.ticks += 1
                 rules_check_counter += 1
                 
-                # Write shared state for API
-                self._write_shared_state(current_price=None)
-                
                 # Check file-based commands from API/dashboard
-                from shared.core.state import read_command
                 cmd = read_command()
                 if cmd == "pause":
                     logger.info("Received PAUSE command from dashboard")

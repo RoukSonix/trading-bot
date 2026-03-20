@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -141,8 +140,6 @@ class BacktestCharts:
             fig = go.Figure()
             fig.update_layout(title="Trade P&L Distribution — no completed trades", template="plotly_dark")
             return fig
-
-        colors = ["#26A69A" if p >= 0 else "#EF5350" for p in pnls]
 
         fig = go.Figure()
         fig.add_trace(

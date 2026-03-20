@@ -113,40 +113,37 @@ async def get_orders(
     return OrderListResponse(orders=orders, total=len(orders))
 
 
-@router.post("/force-buy", response_model=ForceTradeResponse, dependencies=[Depends(require_api_key)])
-async def force_buy(request: ForceTradeRequest = ForceTradeRequest()):
-    """Execute a forced market buy."""
+async def _force_trade(side: str, request: ForceTradeRequest) -> ForceTradeResponse:
+    """Execute a forced market trade."""
     bot = _get_bot()
-    
+
     if bot is None:
         raise HTTPException(status_code=503, detail="Bot not connected")
-    
+
     if not bot.running:
         raise HTTPException(status_code=400, detail="Bot is not running")
-    
+
     try:
-        # Use default amount from config if not specified
         amount = request.amount or bot.config.amount_per_level
-        
-        # Execute market buy through exchange
+
         if hasattr(bot, "exchange") and bot.exchange:
-            order = await bot.exchange.create_market_buy_order(
-                symbol=bot.symbol,
-                amount=amount,
+            create_order = (
+                bot.exchange.create_market_buy_order if side == "buy"
+                else bot.exchange.create_market_sell_order
             )
+            order = await create_order(symbol=bot.symbol, amount=amount)
             return ForceTradeResponse(
                 success=True,
-                message="Market buy executed",
+                message=f"Market {side} executed",
                 order_id=order.get("id"),
                 price=order.get("average") or order.get("price"),
                 amount=amount,
             )
         else:
-            # Paper trading mode
             current_price = bot.strategy.center_price if bot.strategy else 0
             return ForceTradeResponse(
                 success=True,
-                message="Paper buy executed",
+                message=f"Paper {side} executed",
                 order_id=f"paper_{datetime.now(timezone.utc).timestamp()}",
                 price=current_price,
                 amount=amount,
@@ -154,53 +151,20 @@ async def force_buy(request: ForceTradeRequest = ForceTradeRequest()):
     except Exception as e:
         return ForceTradeResponse(
             success=False,
-            message=f"Buy failed: {str(e)}",
+            message=f"{side.capitalize()} failed: {str(e)}",
         )
+
+
+@router.post("/force-buy", response_model=ForceTradeResponse, dependencies=[Depends(require_api_key)])
+async def force_buy(request: ForceTradeRequest = ForceTradeRequest()):
+    """Execute a forced market buy."""
+    return await _force_trade("buy", request)
 
 
 @router.post("/force-sell", response_model=ForceTradeResponse, dependencies=[Depends(require_api_key)])
 async def force_sell(request: ForceTradeRequest = ForceTradeRequest()):
     """Execute a forced market sell."""
-    bot = _get_bot()
-    
-    if bot is None:
-        raise HTTPException(status_code=503, detail="Bot not connected")
-    
-    if not bot.running:
-        raise HTTPException(status_code=400, detail="Bot is not running")
-    
-    try:
-        # Use default amount from config if not specified
-        amount = request.amount or bot.config.amount_per_level
-        
-        # Execute market sell through exchange
-        if hasattr(bot, "exchange") and bot.exchange:
-            order = await bot.exchange.create_market_sell_order(
-                symbol=bot.symbol,
-                amount=amount,
-            )
-            return ForceTradeResponse(
-                success=True,
-                message="Market sell executed",
-                order_id=order.get("id"),
-                price=order.get("average") or order.get("price"),
-                amount=amount,
-            )
-        else:
-            # Paper trading mode
-            current_price = bot.strategy.center_price if bot.strategy else 0
-            return ForceTradeResponse(
-                success=True,
-                message="Paper sell executed",
-                order_id=f"paper_{datetime.now(timezone.utc).timestamp()}",
-                price=current_price,
-                amount=amount,
-            )
-    except Exception as e:
-        return ForceTradeResponse(
-            success=False,
-            message=f"Sell failed: {str(e)}",
-        )
+    return await _force_trade("sell", request)
 
 
 @router.delete("/{order_id}", response_model=CancelOrderResponse, dependencies=[Depends(require_api_key)])
