@@ -5,9 +5,11 @@ BacktestEngine (Sprint 19) with anti look-ahead bias, slippage, and
 comprehensive metrics.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, TYPE_CHECKING
 import json
 from pathlib import Path
 
@@ -15,9 +17,11 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 
-from binance_bot.strategies import GridStrategy, GridConfig
-from binance_bot.strategies.base import SignalType
 from shared.risk import RiskMetrics
+
+if TYPE_CHECKING:
+    from binance_bot.strategies import GridStrategy, GridConfig
+    from binance_bot.strategies.base import SignalType
 
 
 @dataclass
@@ -182,6 +186,8 @@ class BacktestEngine:
         Returns:
             BacktestResult with comprehensive metrics.
         """
+        from binance_bot.strategies.base import SignalType
+
         if data is None or data.empty:
             logger.warning("No data provided.")
             return BacktestResult(config_name="empty")
@@ -459,6 +465,8 @@ class Backtester:
         end_date: Optional[str] = None,
     ) -> BacktestResult:
         """Run backtest on historical data."""
+        from binance_bot.strategies.base import SignalType
+
         if start_date is not None:
             data = data[data.index >= pd.Timestamp(start_date)]
         if end_date is not None:
@@ -591,6 +599,8 @@ class Backtester:
         end_date: Optional[str] = None,
     ) -> BacktestResult:
         """Run backtest with a flat parameter dict (for optimizers)."""
+        from binance_bot.strategies import GridStrategy, GridConfig
+
         config = GridConfig(
             grid_levels=params.get("grid_levels", 10),
             grid_spacing_pct=params.get("grid_spacing_pct", 1.0),
@@ -613,6 +623,8 @@ class Backtester:
         price_column: str = "close",
     ) -> List[BacktestResult]:
         """Run multiple backtests with different configs for comparison."""
+        from binance_bot.strategies import GridStrategy, GridConfig
+
         results = []
         for config in configs:
             name = config.get("name", f"config_{len(results)}")

@@ -25,6 +25,25 @@ from shared.ai import (
 from shared.factors import factor_calculator, factor_strategy
 
 
+def _extract_json(text: str) -> dict | None:
+    """Extract first JSON object from text, supporting nested braces."""
+    start = text.find('{')
+    if start == -1:
+        return None
+    depth = 0
+    for i, ch in enumerate(text[start:], start):
+        if ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(text[start:i + 1])
+                except json.JSONDecodeError:
+                    return None
+    return None
+
+
 @dataclass
 class AIGridConfig(GridConfig):
     """AI Grid configuration with additional AI settings."""
@@ -249,7 +268,8 @@ class AIGridStrategy(GridStrategy):
     def _get_level_number(self, price: float) -> int:
         """Get grid level number for a price."""
         for i, level in enumerate(self.levels):
-            if abs(level.price - price) < 0.01:
+            tolerance = max(level.price * 0.001, 0.001)  # 0.1% or $0.001 minimum
+            if abs(level.price - price) < tolerance:
                 return i + 1
         return 0
     
@@ -406,12 +426,12 @@ Respond with ONLY a JSON object (no markdown, no extra text):
         valid_actions = {"CONTINUE", "PAUSE", "STOP", "ADJUST", "GO_SHORT", "REDUCE_LONG"}
         valid_risks = {"LOW", "MEDIUM", "HIGH"}
 
-        # Try JSON parsing first
+        # Try JSON parsing first (supports nested braces)
         try:
-            # Extract JSON from response (may be wrapped in markdown code block)
-            json_match = re.search(r'\{[^{}]+\}', response, re.DOTALL)
-            if json_match:
-                parsed = json.loads(json_match.group())
+            cleaned = re.sub(r'```(?:json)?\s*', '', response)
+            cleaned = re.sub(r'```', '', cleaned)
+            parsed = _extract_json(cleaned)
+            if parsed:
                 action = str(parsed.get("action", "")).upper()
                 if action in valid_actions:
                     result["action"] = action

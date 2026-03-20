@@ -1,6 +1,6 @@
 # Project Status
 
-**Last updated:** 2026-03-19
+**Last updated:** 2026-03-20
 
 ## Current State
 
@@ -12,7 +12,7 @@
 - Total trades: 89 (paper)
 - Strategies: Grid, Momentum, MeanReversion, Breakout (auto-selected by regime)
 - Indicators: 50+ (trend, momentum, volatility, volume, support/resistance, patterns)
-- Tests: 473+
+- Tests: 652
 - Total commits: 120+
 - Codebase: ~14,500 lines Python
 
@@ -161,11 +161,37 @@ Based on Audit V2 (118 issues found):
 - **Sprint 26:** Bot logic & state machine ✅
 - **Sprint 27:** Risk management fixes ✅
 - **Sprint 28:** Alerts, API & data consistency ✅
-- **Sprint 29:** Architecture & decoupling
+- **Sprint 29:** Architecture & decoupling ✅
 - **Sprint 30:** Code quality & cleanup
 - **Sprint 31:** Simplification + full regression
 
 See `docs/SPRINT_PLAN.md` for details.
+
+### Sprint 29 — Architecture & Decoupling (COMPLETED)
+**Date:** 2026-03-20
+**Branch:** `feature/sprint-29-architecture`
+**Issues fixed:** 11 (4 P1-STRAT + 3 P1-AI + 1 P1-BACK + 1 P1-DASH + 1 P3-STRAT)
+
+| Issue | Severity | File(s) | Fix |
+|-------|----------|---------|-----|
+| P1-BACK-1 | P1 | `shared/backtest/engine.py`, `shared/optimization/optimizer.py` | Late imports + TYPE_CHECKING for binance_bot deps |
+| P1-STRAT-3 | P1 | `order_manager.py`, `base.py` | Added `symbol` field to Signal; `execute_signal` uses `signal.symbol` |
+| P1-STRAT-6 | P1 | `exchange.py` | `_retry_on_network_error` decorator on all exchange methods |
+| P1-STRAT-9 | P1 | `emergency.py` | Paths use `BOT_DATA_DIR` env var via `_DATA_DIR` |
+| P1-STRAT-10 | P1 | `ai_grid.py` | Relative tolerance `max(price * 0.001, 0.001)` replaces hardcoded 0.01 |
+| P1-STRAT-11 | P1 | `ai_grid.py` | Balanced-brace JSON extractor replaces `[^{}]+` regex |
+| P1-AI-1 | P1 | `shared/ai/agent.py` | Negation-aware keyword matching (within 5-word window) |
+| P1-AI-2 | P1 | `shared/ai/agent.py` | `assess_risk()` docstring documents jesse-bot caller |
+| P1-AI-3 | P1 | `shared/ai/agent.py` | JSON-first parsing in all 4 LLM parsers with string fallback |
+| P1-DASH-1 | P1 | `shared/dashboard/app.py` | Timestamp-based rerun replaces `time.sleep()` |
+| P3-STRAT-3 | P3 | `grid.py` | Inline EMA/RSI/ADX/ATR replaced with `shared/indicators/` calls |
+
+Key changes:
+- `shared/` no longer imports `binance_bot` at module level (breaks circular dep)
+- All LLM response parsers try structured JSON extraction before string matching
+- Negation patterns like "not bullish" no longer false-positive as bullish
+- Grid indicator calculations consolidated into `shared/indicators/` (net ~50 lines removed)
+- 45 new tests in `tests/unit/test_sprint29_architecture.py`
 
 ### Known Issues
 See `docs/AUDIT_V2.md` for full list (118 items, P0-P3).

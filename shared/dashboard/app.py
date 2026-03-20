@@ -245,8 +245,10 @@ def main():
         _tab_settings(status)
 
     if st.session_state.auto_refresh:
-        time.sleep(st.session_state.refresh_sec)
-        st.rerun()
+        last_refresh = st.session_state.get("_last_refresh", 0)
+        if time.time() - last_refresh >= st.session_state.refresh_sec:
+            st.session_state._last_refresh = time.time()
+            st.rerun()
 
 
 # ── Header ───────────────────────────────────────────────────────────────────

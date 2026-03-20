@@ -8,6 +8,7 @@ Provides emergency shutdown capability for the trading bot:
 """
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -15,18 +16,22 @@ from typing import Optional
 from loguru import logger
 
 
+# Resolve data directory from env or default to "data"
+_DATA_DIR = Path(os.getenv("BOT_DATA_DIR", "data"))
+
+
 class EmergencyStop:
     """Emergency stop handler for trading bot.
-    
+
     Monitors for emergency stop triggers and handles graceful shutdown:
-    - File-based trigger (.emergency_stop in working directory)
+    - File-based trigger (.emergency_stop in data directory)
     - Programmatic trigger via trigger() method
     - Closes all positions before stopping
     - Saves state for recovery
     """
-    
-    TRIGGER_FILE = Path(".emergency_stop")
-    STATE_FILE = Path("data/emergency_state.json")
+
+    TRIGGER_FILE = _DATA_DIR / ".emergency_stop"
+    STATE_FILE = _DATA_DIR / "emergency_state.json"
     
     def __init__(self, exchange_client=None, strategy=None):
         """Initialize emergency stop handler.

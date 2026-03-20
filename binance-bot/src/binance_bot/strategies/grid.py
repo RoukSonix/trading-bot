@@ -17,6 +17,9 @@ from loguru import logger
 
 from binance_bot.strategies.base import BaseStrategy, Signal, SignalType, GridLevel
 from shared.core.database import get_session, Trade, Position
+from shared.indicators.trend import ema as shared_ema, adx as shared_adx
+from shared.indicators.momentum import rsi as shared_rsi
+from shared.indicators.volatility import atr as shared_atr
 from shared.risk.tp_sl import TPSLCalculator
 from shared.risk.trailing_stop import TrailingStopManager
 from shared.risk.break_even import BreakEvenManager
@@ -205,26 +208,20 @@ class GridStrategy(BaseStrategy):
             self.levels.append(level)
 
     def detect_trend(self, ohlcv_df: pd.DataFrame) -> str:
-        """Detect market trend using multiple indicators.
+        """Detect market trend using shared indicators.
 
         Returns: "bullish", "bearish", or "sideways"
 
-        Uses:
-        - EMA 20 vs EMA 50 crossover
-        - Price position relative to EMAs
-        - ADX for trend strength
-        - RSI divergence
+        Uses shared/indicators/ for EMA, ADX, RSI calculations.
         """
         if len(ohlcv_df) < 50:
             return "sideways"
 
         close = ohlcv_df["close"]
-        high = ohlcv_df["high"]
-        low = ohlcv_df["low"]
 
-        # EMA crossover
-        ema_20 = close.ewm(span=20, adjust=False).mean()
-        ema_50 = close.ewm(span=50, adjust=False).mean()
+        # EMA crossover (shared indicators)
+        ema_20 = shared_ema(ohlcv_df, period=20)
+        ema_50 = shared_ema(ohlcv_df, period=50)
 
         ema_bullish = ema_20.iloc[-1] > ema_50.iloc[-1]
         ema_bearish = ema_20.iloc[-1] < ema_50.iloc[-1]
@@ -234,20 +231,14 @@ class GridStrategy(BaseStrategy):
         price_above_ema20 = current_price > ema_20.iloc[-1]
         price_above_ema50 = current_price > ema_50.iloc[-1]
 
-        # ADX for trend strength
-        adx = self._calculate_adx(high, low, close, period=14)
-        strong_trend = adx > 25
+        # ADX for trend strength (shared indicators)
+        adx_df = shared_adx(ohlcv_df, period=14)
+        adx_value = float(adx_df["adx"].iloc[-1]) if not adx_df.empty else 0.0
+        strong_trend = adx_value > 25
 
-        # RSI
-        delta = close.diff()
-        gain = delta.where(delta > 0, 0)
-        loss = -delta.where(delta < 0, 0)
-        avg_gain = gain.ewm(alpha=1/14, min_periods=14).mean()
-        avg_loss = loss.ewm(alpha=1/14, min_periods=14).mean()
-        rs = avg_gain / avg_loss.replace(0, np.nan)
-        rsi = 100 - (100 / (1 + rs))
-        rsi = rsi.fillna(100.0)
-        current_rsi = rsi.iloc[-1]
+        # RSI (shared indicators)
+        rsi_series = shared_rsi(ohlcv_df, period=14)
+        current_rsi = float(rsi_series.iloc[-1])
 
         # Scoring
         bull_score = 0
@@ -278,30 +269,6 @@ class GridStrategy(BaseStrategy):
         elif bear_score >= 4:
             return "bearish"
         return "sideways"
-
-    def _calculate_adx(self, high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> float:
-        """Calculate ADX (Average Directional Index)."""
-        plus_dm = high.diff()
-        minus_dm = -low.diff()
-
-        plus_dm = plus_dm.where((plus_dm > minus_dm) & (plus_dm > 0), 0)
-        minus_dm = minus_dm.where((minus_dm > plus_dm) & (minus_dm > 0), 0)
-
-        tr1 = high - low
-        tr2 = (high - close.shift()).abs()
-        tr3 = (low - close.shift()).abs()
-        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-
-        atr = tr.ewm(alpha=1/period, min_periods=period).mean()
-        plus_di = 100 * (plus_dm.ewm(alpha=1/period, min_periods=period).mean() / atr)
-        minus_di = 100 * (minus_dm.ewm(alpha=1/period, min_periods=period).mean() / atr)
-
-        di_sum = (plus_di + minus_di).replace(0, np.nan)
-        dx = 100 * ((plus_di - minus_di).abs() / di_sum)
-        dx = dx.fillna(0.0)
-        adx = dx.ewm(alpha=1/period, min_periods=period).mean()
-
-        return float(adx.iloc[-1]) if not np.isnan(adx.iloc[-1]) else 0.0
 
     def get_grid_bias(self, trend: str) -> tuple[float, float]:
         """Convert trend to grid direction bias.
@@ -485,15 +452,8 @@ class GridStrategy(BaseStrategy):
         """
         if len(df) < period:
             return
-        high = df["high"]
-        low = df["low"]
-        close = df["close"]
-        tr1 = high - low
-        tr2 = (high - close.shift()).abs()
-        tr3 = (low - close.shift()).abs()
-        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        atr = tr.ewm(alpha=1 / period, min_periods=period).mean()
-        self.current_atr = float(atr.iloc[-1]) if not np.isnan(atr.iloc[-1]) else 0.0
+        atr_series = shared_atr(df, period=period)
+        self.current_atr = float(atr_series.iloc[-1]) if not np.isnan(atr_series.iloc[-1]) else 0.0
 
     def _set_tp_sl_for_level(self, level: GridLevel):
         """Set TP/SL prices for a newly filled level based on config mode."""

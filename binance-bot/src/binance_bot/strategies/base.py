@@ -21,6 +21,7 @@ class Signal:
     price: float
     amount: float
     reason: str
+    symbol: str = "BTC/USDT"
     confidence: float = 1.0  # 0-1
     
     def __repr__(self):
