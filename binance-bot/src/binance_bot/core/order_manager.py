@@ -170,26 +170,27 @@ class OrderManager:
     
     def execute_signal(self, signal: Signal, order_type: OrderType = OrderType.LIMIT) -> Order:
         """Execute a trading signal.
-        
+
         Args:
             signal: Trading signal to execute
             order_type: Type of order to place
-            
+
         Returns:
             Executed order
         """
         side = "buy" if signal.type == SignalType.BUY else "sell"
         abs_amount = abs(signal.amount)
+        symbol = signal.symbol
 
         if order_type == OrderType.MARKET:
             return self.create_market_order(
-                symbol="BTC/USDT",  # TODO: get from signal
+                symbol=symbol,
                 side=side,
                 amount=abs_amount,
             )
         else:
             return self.create_limit_order(
-                symbol="BTC/USDT",
+                symbol=symbol,
                 side=side,
                 amount=abs_amount,
                 price=signal.price,

@@ -8,7 +8,6 @@ import optuna
 import pandas as pd
 from loguru import logger
 
-from binance_bot.strategies import GridStrategy, GridConfig
 from shared.backtest.engine import Backtester
 from shared.optimization.metrics import PerformanceMetrics
 
@@ -139,6 +138,8 @@ class GridOptimizer:
         Returns:
             Dict with performance metrics.
         """
+        from binance_bot.strategies import GridStrategy, GridConfig
+
         config = GridConfig(
             grid_levels=params["grid_levels"],
             grid_spacing_pct=params["grid_spacing_pct"],
