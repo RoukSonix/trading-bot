@@ -3,7 +3,7 @@
 **Branch:** `sprint-30-cleanup`
 **Goal:** Clean up all P3 issues, unused code, dead imports, duplicate patterns
 **Issues:** 18 items (16 P3 + 1 P1 + 1 P2)
-**Status:** PLANNING
+**Status:** VALIDATED
 
 ---
 
@@ -15,6 +15,8 @@ All line numbers below were verified against the current codebase. Corrections f
 - ~~P3-API-1 (main.py:3)~~: `import os` is used at line 57 for `os.getenv(...)`. **No fix needed.**
 
 This leaves **16 valid issues** to fix.
+
+> **Post-validation update:** P3-ALERT-1 was also found invalid during validation (see issue 7 below), reducing to **15 valid issues**.
 
 ---
 
@@ -40,10 +42,11 @@ This leaves **16 valid issues** to fix.
 
 ### 3. P3-BOT-3: Import inside loop
 
-**File:** `binance-bot/src/binance_bot/bot.py:449` `[CORRECTED from 443]`
+**File:** `binance-bot/src/binance_bot/bot.py:450` `[CORRECTED from 443→449→450]`
 **Line:** `from shared.core.state import read_command` (inside `while self.running:` loop)
 **Fix:** Move import to file-level imports (line ~26, alongside other `shared.core.state` imports). The existing line 26 already imports from `shared.core.state`, so add `read_command` there.
 **Test:** `pytest tests/ -k bot` — command handling still works.
+**VALIDATION NOTE:** Line 449 is the comment; the actual import is at line 450.
 
 ---
 
@@ -80,19 +83,18 @@ This leaves **16 valid issues** to fix.
 
 ### 6. P3-STRAT-2: Unused variable `pnl_color`
 
-**File:** `binance-bot/src/binance_bot/core/position_manager.py:285` `[CORRECTED from 237]`
+**File:** `binance-bot/src/binance_bot/core/position_manager.py:275` `[CORRECTED from 237→285→275]`
 **Line:** `pnl_color = "green" if pos.unrealized_pnl >= 0 else "red"`
 **Fix:** Remove the line. It's never referenced (logger calls below use plain text, not colored output).
 **Test:** `pytest tests/ -k position` — summary printing still works.
+**VALIDATION NOTE:** Actual line is 275, not 285. Confirmed unused — logger calls at lines 276-281 use plain text formatting.
 
 ---
 
-### 7. P3-ALERT-1: `AlertLevel` enum underutilized
+### 7. ~~P3-ALERT-1: `AlertLevel` enum underutilized~~ — INVALID
 
 **File:** `shared/alerts/manager.py:16-21`
-**Problem:** `AlertLevel` enum is defined but routing uses hardcoded strings instead of enum values.
-**Fix:** Replace hardcoded string comparisons in the file with `AlertLevel.INFO`, `AlertLevel.WARNING`, etc. where applicable. This is a refactor to use the enum as intended.
-**Test:** `pytest tests/ -k alert` — alert routing unchanged.
+**VALIDATION NOTE:** Audit claim is **inaccurate**. No hardcoded string comparisons found in `manager.py`. The `AlertLevel` enum is already used correctly: `send_error_alert` accepts `level: AlertLevel`, `send_custom_alert` maps `AlertLevel` to colors, and email routing uses `AlertLevel.ERROR`/`AlertLevel.CRITICAL`/`AlertLevel.WARNING` comparisons. Alert routing is based on config flags (`discord_enabled`, `email_enabled`), not alert levels. **No fix needed.**
 
 ---
 
@@ -102,6 +104,7 @@ This leaves **16 valid issues** to fix.
 **Problem:** `send_daily_summary` accepts `trades_list` and passes it to email but not to Discord's `send_daily_summary`.
 **Fix:** Pass `trades_list=trades_list` to the Discord `send_daily_summary` call. Verify the Discord adapter's `send_daily_summary` method accepts `trades_list`; if not, add it.
 **Test:** `pytest tests/ -k alert` — daily summary includes trades in Discord output.
+**VALIDATION NOTE:** Confirmed Discord adapter (`shared/alerts/discord.py:284-296`) does NOT accept `trades_list`. The fix requires: (1) add `trades_list: Optional[list] = None` param to `DiscordAlert.send_daily_summary`, (2) pass it in `AlertManager.send_daily_summary`. Consider how to render trades in the Discord embed (e.g., append trade count or summary field).
 
 ---
 
@@ -196,7 +199,7 @@ Group by file to minimize context switches:
 | 1 | `binance-bot/src/binance_bot/bot.py` | P3-BOT-1,2,3,4 | Low — removing dead code |
 | 2 | `binance-bot/src/binance_bot/core/data_collector.py` | P3-STRAT-1a,1b | Low — unused imports |
 | 3 | `binance-bot/src/binance_bot/core/position_manager.py` | P3-STRAT-1c,1d, P3-STRAT-2 | Low — unused imports/vars |
-| 4 | `shared/alerts/manager.py` | P3-ALERT-1,2 | Medium — changes alert routing |
+| 4 | `shared/alerts/manager.py`, `shared/alerts/discord.py` | ~~P3-ALERT-1~~ (invalid), P3-ALERT-2 | Medium — discord adapter change |
 | 5 | `shared/api/routes/orders.py` | P3-API-2 | Medium — refactoring endpoints |
 | 6 | `shared/risk/metrics.py` | P3-API-3 | Low — internal refactor |
 | 7 | `shared/backtest/charts.py` | P3-BACK-1,2 | Low — unused code |
@@ -233,8 +236,8 @@ python -c "import shared.monitoring.metrics"
 
 ## Exit Criteria
 
-- [ ] All 16 valid issues fixed
+- [ ] All 15 valid issues fixed (P3-ALERT-1 dropped as invalid)
 - [ ] `pytest tests/ -v` passes (zero failures)
 - [ ] No new unused imports introduced
 - [ ] No regressions in existing functionality
-- [ ] 2 invalid audit claims documented (P3-STRAT-1 grid.py, P3-API-1)
+- [ ] 3 invalid audit claims documented (P3-STRAT-1 grid.py, P3-API-1, P3-ALERT-1)

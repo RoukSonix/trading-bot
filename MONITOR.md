@@ -1,8 +1,8 @@
 # MONITOR.md
 
-sprint: 29
-step: 3 (Implementation)
+sprint: 30
+step: 2 (Validation)
 agent: claude
-started: 2026-03-20T13:56:00Z
-branch: feature/sprint-29-architecture
-worktree: ~/projects/CentricVoid/trading-bots-sprint-29-architecture
+started: 2026-03-20T22:02:00Z
+branch: feature/sprint-30-cleanup
+worktree: ~/projects/CentricVoid/trading-bots-sprint-30-cleanup
