@@ -113,10 +113,20 @@ def execute_signal(self, signal: Signal, order_type: OrderType = OrderType.LIMIT
 def cancel_order(self, order_id: str, symbol: str = "BTC/USDT") -> bool:
 ```
 
-**Fix:** Read symbol from the `Signal` dataclass. The `Signal` class (defined in `binance_bot/strategies/base.py`) already has a `symbol` field.
+**Fix:** Add `symbol` field to the `Signal` dataclass, then use `signal.symbol` in `execute_signal()`.
 
 ```python
-# Fix execute_signal — use signal.symbol
+# Step 0: Add symbol to Signal dataclass (binance_bot/strategies/base.py:18-24)
+@dataclass
+class Signal:
+    type: SignalType
+    price: float
+    amount: float
+    reason: str
+    symbol: str = "BTC/USDT"   # <-- NEW FIELD (default preserves backward compat)
+    confidence: float = 1.0
+
+# Step 1: Fix execute_signal — use signal.symbol
 def execute_signal(self, signal: Signal, order_type: OrderType = OrderType.LIMIT) -> Order:
     side = "buy" if signal.type == SignalType.BUY else "sell"
     abs_amount = abs(signal.amount)
@@ -137,7 +147,7 @@ def execute_signal(self, signal: Signal, order_type: OrderType = OrderType.LIMIT
         )
 ```
 
-**VALIDATION NOTE:** Verify `Signal` dataclass has a `symbol` field. If not, add one. Also check all callers of `cancel_order()` — the default `"BTC/USDT"` should be removed or the symbol made required.
+**VALIDATION NOTE (2026-03-19):** **CRITICAL** — The plan originally stated "The `Signal` class already has a `symbol` field" — **this is FALSE**. The `Signal` dataclass at `base.py:18-24` has fields: `type`, `price`, `amount`, `reason`, `confidence`. No `symbol` field exists. Using `signal.symbol` without adding the field would raise `AttributeError`. Two callers create `Signal` without `symbol`: `grid.py:423` and `grid.py:663` — these are fine with the default `"BTC/USDT"` value. Also check all callers of `cancel_order()` — the default `"BTC/USDT"` should be removed or the symbol made required.
 
 **Test:**
 - `test_execute_signal_uses_signal_symbol`: Create signal with symbol="ETH/USDT" → order placed with ETH/USDT.
@@ -194,7 +204,7 @@ def get_ticker(self, symbol: str = "BTC/USDT") -> dict:
 # Same for get_all_balances, get_order_book, get_ohlcv
 ```
 
-**VALIDATION NOTE:** Check if `tenacity` is in requirements.txt. If yes, prefer `@retry(retry=retry_if_exception_type((ccxt.NetworkError, ccxt.ExchangeNotAvailable)), stop=stop_after_attempt(3), wait=wait_exponential())`. If not, use the simple decorator above.
+**VALIDATION NOTE (2026-03-19):** `tenacity` is NOT in any requirements file (verified via grep). Use the custom `_retry_on_network_error` decorator above. File is 155 lines total — methods span lines 35-150. The decorator adds ~20 lines at the top. Clean change.
 
 **Test:**
 - `test_get_ticker_retries_on_network_error`: Mock exchange to raise `NetworkError` twice then succeed → returns ticker.
