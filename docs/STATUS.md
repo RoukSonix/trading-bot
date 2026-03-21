@@ -163,7 +163,7 @@ Based on Audit V2 (118 issues found):
 - **Sprint 28:** Alerts, API & data consistency ✅
 - **Sprint 29:** Architecture & decoupling ✅
 - **Sprint 30:** Code quality & cleanup ✅
-- **Sprint 31:** Simplification + full regression
+- **Sprint 31:** Simplification + full regression ✅
 
 See `docs/SPRINT_PLAN.md` for details.
 
@@ -226,6 +226,28 @@ Key changes:
 - 3 invalid audit claims documented (P3-STRAT-1 grid.py, P3-API-1, P3-ALERT-1)
 - 29 new tests in `tests/unit/test_sprint30_cleanup.py`
 - Tests: 681 (all passing)
+
+### Sprint 31 — Simplification & Final Regression (COMPLETED)
+**Date:** 2026-03-21
+**Branch:** `feature/sprint-31-simplify`
+**Changes:** 18 files, 902 insertions, 1213 deletions
+
+| Category | Count | Details |
+|----------|-------|---------|
+| Functions split | 15+ | All >50-line functions decomposed into focused sub-methods |
+| Constants extracted | 30+ | Magic numbers → `shared/constants.py` across 12 files |
+| Duplicates consolidated | 7 | LLM JSON parsing → `shared/ai/parsing.py` |
+| Conditionals simplified | 2 | Removed dead branches, simplified decorators |
+| Lines reduced | 311 | Net reduction in existing code (excluding new utility files) |
+| Tests | 681 | All passing, zero regressions |
+
+Key changes:
+- Created `shared/constants.py` (76 lines) — centralized named constants
+- Created `shared/ai/parsing.py` (97 lines) — consolidated LLM response parsing
+- Split large functions in bot.py, agent.py, ai_grid.py, engine.py, app.py, jesse-bot
+- Extracted magic numbers from 12 source files
+- Updated 2 test files to reference refactored method names
+- See `docs/SIMPLIFICATION_REPORT.md` for full metrics
 
 ### Known Issues
 See `docs/AUDIT_V2.md` for full list (118 items, P0-P3).

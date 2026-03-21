@@ -4,6 +4,8 @@ from enum import Enum
 from typing import Optional
 from loguru import logger
 
+from shared.constants import HALF_KELLY_FACTOR, ATR_STOP_MULTIPLIER
+
 
 class SizingMethod(Enum):
     """Position sizing method."""
@@ -151,7 +153,7 @@ class PositionSizer:
         
         # Use half Kelly for more conservative sizing
         if not full:
-            kelly_pct *= 0.5
+            kelly_pct *= HALF_KELLY_FACTOR
         
         # Ensure positive and capped
         kelly_pct = max(0, min(kelly_pct, self.max_position_pct))
@@ -188,8 +190,7 @@ class PositionSizer:
         
         risk_amount = portfolio_value * self.risk_per_trade
         
-        # Use 2x ATR as default stop distance
-        atr_multiplier = 2.0
+        atr_multiplier = ATR_STOP_MULTIPLIER
         stop_distance = atr * atr_multiplier
         
         # If explicit stop-loss provided, use that

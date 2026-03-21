@@ -15,6 +15,8 @@ from typing import Optional
 
 from loguru import logger
 
+from shared.constants import MIN_POSITION_AMOUNT
+
 
 # Resolve data directory from env or default to "data"
 _DATA_DIR = Path(os.getenv("BOT_DATA_DIR", "data"))
@@ -136,7 +138,7 @@ class EmergencyStop:
                 amount = float(position.get('amount', 0) or position.get('contracts', 0))
                 side = position.get('side', 'long')
                 
-                if abs(amount) < 1e-8:
+                if abs(amount) < MIN_POSITION_AMOUNT:
                     continue
                 
                 try:

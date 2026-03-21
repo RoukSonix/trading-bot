@@ -4,6 +4,7 @@ from typing import Optional
 from sqlalchemy import select
 from loguru import logger
 
+from shared.constants import CANDLE_FETCH_LIMIT
 from shared.core.database import get_session, OHLCV, init_db
 from binance_bot.core.exchange import exchange_client
 
@@ -19,7 +20,7 @@ class DataCollector:
         self,
         symbol: str = "BTC/USDT",
         timeframe: str = "1h",
-        limit: int = 100,
+        limit: int = CANDLE_FETCH_LIMIT,
     ) -> int:
         """Fetch OHLCV data from exchange and store in database.
         
@@ -76,7 +77,7 @@ class DataCollector:
         self,
         symbol: str = "BTC/USDT",
         timeframe: str = "1h",
-        limit: int = 100,
+        limit: int = CANDLE_FETCH_LIMIT,
     ) -> list[dict]:
         """Get OHLCV data from database.
         

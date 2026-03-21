@@ -12,6 +12,8 @@ from jesse.strategies import Strategy
 import jesse.indicators as ta
 from jesse import utils
 
+from shared.constants import MAX_ATR_VOLATILITY, JESSE_MIN_GRID_SUITABILITY
+
 logger = logging.getLogger(__name__)
 
 from .grid_logic import (
@@ -102,117 +104,34 @@ class AIGridStrategy(Strategy):
 
     def hyperparameters(self):
         """Strategy hyperparameters for optimization."""
+        return self._grid_hyperparameters() + self._ai_hyperparameters()
+
+    @staticmethod
+    def _grid_hyperparameters():
+        """Grid trading and risk hyperparameters."""
+        # Trial 2861 ETH-USDT 1h (Sharpe 2.67 OOS, +4.19% full backtest 15mo)
         return [
-            # === Trial 2861 ETH-USDT 1h (Sharpe 2.67 OOS, +4.19% full backtest 15mo) ===
-            {
-                'name': 'grid_levels_count',
-                'type': int,
-                'min': 3,
-                'max': 30,
-                'default': 4,
-            },
-            {
-                'name': 'grid_spacing_pct',
-                'type': float,
-                'min': 0.3,
-                'max': 5.0,
-                'default': 3.697,
-            },
-            {
-                'name': 'amount_pct',
-                'type': float,
-                'min': 1.0,
-                'max': 10.0,
-                'default': 9.988,
-            },
-            {
-                'name': 'atr_period',
-                'type': int,
-                'min': 7,
-                'max': 28,
-                'default': 25,
-            },
-            {
-                'name': 'tp_atr_mult',
-                'type': float,
-                'min': 1.0,
-                'max': 4.0,
-                'default': 3.465,
-            },
-            {
-                'name': 'sl_atr_mult',
-                'type': float,
-                'min': 0.5,
-                'max': 3.0,
-                'default': 2.744,
-            },
-            {
-                'name': 'trailing_activation_pct',
-                'type': float,
-                'min': 0.5,
-                'max': 5.0,
-                'default': 3.904,
-            },
-            {
-                'name': 'trailing_distance_pct',
-                'type': float,
-                'min': 0.3,
-                'max': 3.0,
-                'default': 0.765,
-            },
-            {
-                'name': 'trend_sma_fast',
-                'type': int,
-                'min': 5,
-                'max': 30,
-                'default': 28,
-            },
-            {
-                'name': 'trend_sma_slow',
-                'type': int,
-                'min': 20,
-                'max': 100,
-                'default': 63,
-            },
-            {
-                'name': 'max_total_levels',
-                'type': int,
-                'min': 10,
-                'max': 100,
-                'default': 21,
-            },
-            {
-                'name': 'ai_review_interval',
-                'type': int,
-                'min': 15,
-                'max': 240,
-                'default': 157,
-            },
-            # ai_enabled is not optimizable (bool not supported by Jesse optimizer)
-            # Access via self.hp.get('ai_enabled', True) with default
-            {
-                'name': 'min_grid_suitability',
-                'type': float,
-                'min': 0.1,
-                'max': 0.9,
-                'default': 0.235,
-            },
-            {
-                'name': 'sentiment_weight',
-                'type': float,
-                'min': 0.0,
-                'max': 1.0,
-                'default': 0.708,
-            },
-            # alerts_enabled is not optimizable (bool not supported by Jesse optimizer)
-            # Access via self.hp.get('alerts_enabled', True) with default
-            {
-                'name': 'state_export_interval',
-                'type': int,
-                'min': 5,
-                'max': 60,
-                'default': 17,
-            },
+            {'name': 'grid_levels_count', 'type': int, 'min': 3, 'max': 30, 'default': 4},
+            {'name': 'grid_spacing_pct', 'type': float, 'min': 0.3, 'max': 5.0, 'default': 3.697},
+            {'name': 'amount_pct', 'type': float, 'min': 1.0, 'max': 10.0, 'default': 9.988},
+            {'name': 'atr_period', 'type': int, 'min': 7, 'max': 28, 'default': 25},
+            {'name': 'tp_atr_mult', 'type': float, 'min': 1.0, 'max': 4.0, 'default': 3.465},
+            {'name': 'sl_atr_mult', 'type': float, 'min': 0.5, 'max': 3.0, 'default': 2.744},
+            {'name': 'trailing_activation_pct', 'type': float, 'min': 0.5, 'max': 5.0, 'default': 3.904},
+            {'name': 'trailing_distance_pct', 'type': float, 'min': 0.3, 'max': 3.0, 'default': 0.765},
+            {'name': 'trend_sma_fast', 'type': int, 'min': 5, 'max': 30, 'default': 28},
+            {'name': 'trend_sma_slow', 'type': int, 'min': 20, 'max': 100, 'default': 63},
+            {'name': 'max_total_levels', 'type': int, 'min': 10, 'max': 100, 'default': 21},
+        ]
+
+    @staticmethod
+    def _ai_hyperparameters():
+        """AI, sentiment, and integration hyperparameters."""
+        return [
+            {'name': 'ai_review_interval', 'type': int, 'min': 15, 'max': 240, 'default': 157},
+            {'name': 'min_grid_suitability', 'type': float, 'min': 0.1, 'max': 0.9, 'default': 0.235},
+            {'name': 'sentiment_weight', 'type': float, 'min': 0.0, 'max': 1.0, 'default': 0.708},
+            {'name': 'state_export_interval', 'type': int, 'min': 5, 'max': 60, 'default': 17},
         ]
 
     @property
@@ -307,98 +226,96 @@ class AIGridStrategy(Strategy):
         return filters
 
     def before(self):
-        """Called before strategy logic each candle.
-
-        Detects trend using multi-timeframe data (4h candles if available)
-        and sets grid direction accordingly. Rebuilds grid when direction changes.
-        Calculates factors and ticks sentiment cache.
-        Periodically runs AI analysis when ai_enabled=True.
-        In live mode, tracks peak equity and daily PnL for safety checks.
-        """
-        # Increment candle counter
+        """Called before strategy logic each candle."""
         self.vars['candle_count'] += 1
 
-        # Live mode: track equity for safety checks
         if self.is_live:
-            current_equity = self.balance
-            if self.vars['peak_equity'] is None or current_equity > self.vars['peak_equity']:
-                self.vars['peak_equity'] = current_equity
-            if self.vars['daily_starting_balance'] is None:
-                self.vars['daily_starting_balance'] = current_equity
+            self._update_live_safety()
 
-            # Emergency stop check
-            import os
-            stop_file = os.environ.get('EMERGENCY_STOP_FILE', 'EMERGENCY_STOP')
-            if self._safety_manager.emergency_stop_check(stop_file):
-                logger.warning("EMERGENCY STOP triggered — liquidating all positions")
-                if self.position.is_open:
-                    self.liquidate()
-                if self.hp.get('alerts_enabled', True):
-                    self._alerts_mixin.send_error_alert(
-                        "EMERGENCY STOP triggered", context="safety"
-                    )
+        self._update_factors_and_sentiment()
+        self._update_trend_direction()
+        self._maybe_periodic_alerts()
 
-        # Tick sentiment cache
-        self._sentiment_mixin.tick()
-
-        # Calculate factors from current candles
-        if self.candles is not None and len(self.candles) >= 20:
-            factors = self._factors_mixin.calculate_factors(self.candles)
-            self.vars['last_factors'] = factors
-
-        # Cache sentiment
-        self.vars['last_sentiment'] = self._sentiment_mixin.get_sentiment_detail()
-
-        # Use 4h candles for trend if available, else fall back to current timeframe
-        try:
-            candles_4h = self.get_candles(self.exchange, self.symbol, '4h')
-            closes = list(candles_4h[:, 4])  # Jesse format: [timestamp, open, high, low, close, volume]
-        except Exception as e:
-            logger.warning(f"4h candles unavailable, falling back to 1h: {e}")
-            closes = list(self.candles[:, 4]) if self.candles is not None else []
-
-        if closes:
-            trend = detect_trend(
-                closes,
-                fast_period=self.hp['trend_sma_fast'],
-                slow_period=self.hp['trend_sma_slow'],
-            )
-            if trend == 'uptrend':
-                new_direction = 'long_only'
-            elif trend == 'downtrend':
-                new_direction = 'short_only'
-            else:
-                new_direction = 'both'
-
-            gm = self._get_grid_manager()
-            prev_direction = self.vars.get('prev_grid_direction')
-
-            # Rebuild grid when trend direction changes
-            if prev_direction is not None and new_direction != prev_direction:
-                gm.reset()
-                gm.setup_grid(self.price, new_direction)
-                self.vars['filled_levels'] = set()
-
-            gm.direction = new_direction
-            self.vars['prev_grid_direction'] = new_direction
-
-        # Periodic status alert (every 60 candles)
-        if self.hp.get('alerts_enabled', True):
-            self.vars['status_alert_counter'] += 1
-            if self.vars['status_alert_counter'] >= 60:
-                self.vars['status_alert_counter'] = 0
-                self._alerts_mixin.send_status_alert({
-                    'status': 'running',
-                    'symbol': self.symbol,
-                    'current_price': self.price,
-                    'total_value': self.balance,
-                })
-
-        # AI periodic analysis (with factors + sentiment context)
         if self.hp.get('ai_enabled', True):
             interval = self.hp.get('ai_review_interval', 60)
             if self.vars['candle_count'] % interval == 0:
                 self._run_ai_analysis()
+
+    def _update_live_safety(self):
+        """Track equity and check emergency stop in live mode."""
+        import os
+
+        current_equity = self.balance
+        if self.vars['peak_equity'] is None or current_equity > self.vars['peak_equity']:
+            self.vars['peak_equity'] = current_equity
+        if self.vars['daily_starting_balance'] is None:
+            self.vars['daily_starting_balance'] = current_equity
+
+        stop_file = os.environ.get('EMERGENCY_STOP_FILE', 'EMERGENCY_STOP')
+        if self._safety_manager.emergency_stop_check(stop_file):
+            logger.warning("EMERGENCY STOP triggered — liquidating all positions")
+            if self.position.is_open:
+                self.liquidate()
+            if self.hp.get('alerts_enabled', True):
+                self._alerts_mixin.send_error_alert(
+                    "EMERGENCY STOP triggered", context="safety"
+                )
+
+    def _update_factors_and_sentiment(self):
+        """Calculate factors and tick sentiment cache."""
+        self._sentiment_mixin.tick()
+
+        if self.candles is not None and len(self.candles) >= 20:
+            factors = self._factors_mixin.calculate_factors(self.candles)
+            self.vars['last_factors'] = factors
+
+        self.vars['last_sentiment'] = self._sentiment_mixin.get_sentiment_detail()
+
+    def _update_trend_direction(self):
+        """Detect trend and update grid direction, rebuilding if changed."""
+        try:
+            candles_4h = self.get_candles(self.exchange, self.symbol, '4h')
+            closes = list(candles_4h[:, 4])
+        except Exception as e:
+            logger.warning(f"4h candles unavailable, falling back to 1h: {e}")
+            closes = list(self.candles[:, 4]) if self.candles is not None else []
+
+        if not closes:
+            return
+
+        trend = detect_trend(
+            closes,
+            fast_period=self.hp['trend_sma_fast'],
+            slow_period=self.hp['trend_sma_slow'],
+        )
+        direction_map = {'uptrend': 'long_only', 'downtrend': 'short_only'}
+        new_direction = direction_map.get(trend, 'both')
+
+        gm = self._get_grid_manager()
+        prev_direction = self.vars.get('prev_grid_direction')
+
+        if prev_direction is not None and new_direction != prev_direction:
+            gm.reset()
+            gm.setup_grid(self.price, new_direction)
+            self.vars['filled_levels'] = set()
+
+        gm.direction = new_direction
+        self.vars['prev_grid_direction'] = new_direction
+
+    def _maybe_periodic_alerts(self):
+        """Send periodic status alerts."""
+        if not self.hp.get('alerts_enabled', True):
+            return
+
+        self.vars['status_alert_counter'] += 1
+        if self.vars['status_alert_counter'] >= 60:
+            self.vars['status_alert_counter'] = 0
+            self._alerts_mixin.send_status_alert({
+                'status': 'running',
+                'symbol': self.symbol,
+                'current_price': self.price,
+                'total_value': self.balance,
+            })
 
     def after(self):
         """Called after strategy logic each candle. Exports state at configured interval."""
@@ -654,8 +571,7 @@ class AIGridStrategy(Strategy):
         atr = ta.atr(self.candles, self.hp['atr_period'])
         volatility = atr / self.price
 
-        # Reject if ATR > 8% of price (extremely volatile)
-        return volatility < 0.08
+        return volatility < MAX_ATR_VOLATILITY
 
     def _filter_max_grid_levels(self) -> bool:
         """Ensure we don't have too many filled levels."""
@@ -669,5 +585,5 @@ class AIGridStrategy(Strategy):
             return True  # No data yet — allow trades
 
         suitability = self._factors_mixin.grid_suitability_score(factors)
-        threshold = self.hp.get('min_grid_suitability', 0.3)
+        threshold = self.hp.get('min_grid_suitability', JESSE_MIN_GRID_SUITABILITY)
         return suitability >= threshold

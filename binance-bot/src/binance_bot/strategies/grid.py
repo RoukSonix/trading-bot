@@ -16,6 +16,17 @@ import pandas as pd
 from loguru import logger
 
 from binance_bot.strategies.base import BaseStrategy, Signal, SignalType, GridLevel
+from shared.constants import (
+    MIN_CANDLES_TREND,
+    ADX_STRONG_THRESHOLD,
+    RSI_WEAK_BULL,
+    RSI_WEAK_BEAR,
+    TREND_SCORE_THRESHOLD,
+    GRID_BIAS_BULLISH,
+    GRID_BIAS_BEARISH,
+    GRID_BIAS_NEUTRAL,
+    MIN_POSITION_AMOUNT,
+)
 from shared.core.database import get_session, Trade, Position
 from shared.indicators.trend import ema as shared_ema, adx as shared_adx
 from shared.indicators.momentum import rsi as shared_rsi
@@ -214,7 +225,7 @@ class GridStrategy(BaseStrategy):
 
         Uses shared/indicators/ for EMA, ADX, RSI calculations.
         """
-        if len(ohlcv_df) < 50:
+        if len(ohlcv_df) < MIN_CANDLES_TREND:
             return "sideways"
 
         close = ohlcv_df["close"]
@@ -234,7 +245,7 @@ class GridStrategy(BaseStrategy):
         # ADX for trend strength (shared indicators)
         adx_df = shared_adx(ohlcv_df, period=14)
         adx_value = float(adx_df["adx"].iloc[-1]) if not adx_df.empty else 0.0
-        strong_trend = adx_value > 25
+        strong_trend = adx_value > ADX_STRONG_THRESHOLD
 
         # RSI (shared indicators)
         rsi_series = shared_rsi(ohlcv_df, period=14)
@@ -256,17 +267,17 @@ class GridStrategy(BaseStrategy):
             bull_score += 1
         else:
             bear_score += 1
-        if current_rsi > 55:
+        if current_rsi > RSI_WEAK_BULL:
             bull_score += 1
-        elif current_rsi < 45:
+        elif current_rsi < RSI_WEAK_BEAR:
             bear_score += 1
 
         if not strong_trend:
             return "sideways"
 
-        if bull_score >= 4:
+        if bull_score >= TREND_SCORE_THRESHOLD:
             return "bullish"
-        elif bear_score >= 4:
+        elif bear_score >= TREND_SCORE_THRESHOLD:
             return "bearish"
         return "sideways"
 
@@ -283,11 +294,11 @@ class GridStrategy(BaseStrategy):
             sideways → 50/50
         """
         if trend == "bullish":
-            return (0.7, 0.3)
+            return (GRID_BIAS_BULLISH, GRID_BIAS_BEARISH)
         elif trend == "bearish":
-            return (0.3, 0.7)
+            return (GRID_BIAS_BEARISH, GRID_BIAS_BULLISH)
         else:
-            return (0.5, 0.5)
+            return (GRID_BIAS_NEUTRAL, GRID_BIAS_NEUTRAL)
 
     def setup_grid_with_trend(self, current_price: float, ohlcv_df: pd.DataFrame) -> list[GridLevel]:
         """Set up grid with trend-based bias on level allocation.
@@ -605,7 +616,7 @@ class GridStrategy(BaseStrategy):
                 self.paper_balance += cost
                 self.paper_holdings -= abs_amount
                 self.long_holdings -= abs_amount
-                if self.long_holdings < 0.00000001:
+                if self.long_holdings < MIN_POSITION_AMOUNT:
                     self.long_holdings = 0
                     self.long_entry_price = 0
         else:
@@ -707,7 +718,7 @@ class GridStrategy(BaseStrategy):
                 self.paper_balance += cost
                 self.paper_holdings -= amount
                 self.long_holdings -= amount
-                if self.long_holdings < 0.00000001:
+                if self.long_holdings < MIN_POSITION_AMOUNT:
                     self.long_holdings = 0
                     self.long_entry_price = 0
                 return "filled"
@@ -729,7 +740,7 @@ class GridStrategy(BaseStrategy):
                 if self.paper_balance >= cost:
                     self.paper_balance -= cost
                     self.short_holdings -= amount
-                    if self.short_holdings < 0.00000001:
+                    if self.short_holdings < MIN_POSITION_AMOUNT:
                         self.short_holdings = 0
                         self.short_entry_price = 0
                     return "filled"
@@ -787,8 +798,8 @@ class GridStrategy(BaseStrategy):
             if position.amount <= 0:
                 position.amount = 0
                 position.entry_price = 0
-        position.side = "long" if float(position.amount) > 0.00000001 else "flat"
-        if float(position.amount) < 0.00000001:
+        position.side = "long" if float(position.amount) > MIN_POSITION_AMOUNT else "flat"
+        if float(position.amount) < MIN_POSITION_AMOUNT:
             position.amount = 0
             position.entry_price = 0
 
@@ -803,7 +814,7 @@ class GridStrategy(BaseStrategy):
             new_amount = short_amount + amount
             position.short_amount = new_amount
             position.short_entry = total_cost / new_amount if new_amount > 0 else 0
-            position.direction = "both" if float(position.amount) > 0.00000001 else "short"
+            position.direction = "both" if float(position.amount) > MIN_POSITION_AMOUNT else "short"
         else:  # BUY (cover)
             short_amount = float(position.short_amount) if hasattr(position, 'short_amount') and position.short_amount else 0
             short_entry = float(position.short_entry) if hasattr(position, 'short_entry') and position.short_entry else 0
@@ -814,12 +825,12 @@ class GridStrategy(BaseStrategy):
                 if position.short_amount < 0.00000001:
                     position.short_amount = 0
                     position.short_entry = 0
-            if (position.amount or 0) < 0.00000001 and (position.short_amount or 0) < 0.00000001:
+            if (position.amount or 0) < MIN_POSITION_AMOUNT and (position.short_amount or 0) < MIN_POSITION_AMOUNT:
                 position.side = "flat"
-            elif (position.short_amount or 0) > 0.00000001 and (position.amount or 0) > 0.00000001:
+            elif (position.short_amount or 0) > MIN_POSITION_AMOUNT and (position.amount or 0) > MIN_POSITION_AMOUNT:
                 position.side = "long"  # Net long if both
                 position.direction = "both"
-            elif (position.short_amount or 0) > 0.00000001:
+            elif (position.short_amount or 0) > MIN_POSITION_AMOUNT:
                 position.side = "short"
             else:
                 position.side = "long"

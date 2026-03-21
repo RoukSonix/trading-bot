@@ -304,24 +304,29 @@ def _tab_overview(status):
     positions = _api("/api/positions")
     pnl_history = _api("/api/trades/history")
 
-    # Compute totals
     total_pnl = (pnl_data.get("total_pnl", 0) or 0) if pnl_data else 0
     win_rate = ((pnl_data.get("win_rate", 0) or 0) * 100) if pnl_data else 0
-
-    unrealized = 0.0
-    if positions and positions.get("positions"):
-        for pos in positions["positions"]:
-            unrealized += pos.get("unrealized_pnl", 0) or 0
-
-    balance = total_pnl + unrealized
+    unrealized = _sum_unrealized(positions)
     history = (pnl_history.get("history") or []) if pnl_history else []
 
-    # Compute metrics from history
-    profit_factor = _compute_profit_factor(history)
-    sharpe = _compute_sharpe(history)
-    max_dd = _compute_max_drawdown(history)
+    _overview_balance_section(total_pnl, unrealized, history)
+    _overview_metrics_row(history, win_rate)
 
-    # ── Account Balance ──
+    st.markdown('<div class="sect">ACTIVE POSITION</div>', unsafe_allow_html=True)
+    _render_position(positions)
+    st.markdown('<div class="sect">STRATEGY</div>', unsafe_allow_html=True)
+    _render_strategy(status)
+
+
+def _sum_unrealized(positions):
+    total = 0.0
+    if positions and positions.get("positions"):
+        for pos in positions["positions"]:
+            total += pos.get("unrealized_pnl", 0) or 0
+    return total
+
+
+def _overview_balance_section(total_pnl, unrealized, history):
     initial_balance = float(os.getenv("PAPER_INITIAL_BALANCE", "10000.0"))
     account_balance = initial_balance + total_pnl + unrealized
     balance_change = account_balance - initial_balance
@@ -330,7 +335,6 @@ def _tab_overview(status):
     col_bal, col_chart = st.columns([1, 2])
 
     with col_bal:
-        # Account balance (main number)
         st.markdown(
             f'<div style="padding:1rem 0">'
             f'<div class="bal-label">ACCOUNT BALANCE</div>'
@@ -339,7 +343,6 @@ def _tab_overview(status):
             unsafe_allow_html=True,
         )
 
-        # P&L breakdown
         pnl_cls = "bal-pos" if balance_change > 0 else ("bal-neg" if balance_change < 0 else "bal-zero")
         pnl_sign = "+" if balance_change > 0 else ""
         st.markdown(
@@ -370,7 +373,12 @@ def _tab_overview(status):
         else:
             st.markdown('<div class="muted">No trading history</div>', unsafe_allow_html=True)
 
-    # ── Key Metrics Row ──
+
+def _overview_metrics_row(history, win_rate):
+    profit_factor = _compute_profit_factor(history)
+    sharpe = _compute_sharpe(history)
+    max_dd = _compute_max_drawdown(history)
+
     m1, m2, m3, m4 = st.columns(4)
     with m1:
         st.metric("Win Rate", f"{win_rate:.1f}%")
@@ -381,14 +389,6 @@ def _tab_overview(status):
         st.metric("Sharpe Ratio", f"{sharpe:.2f}")
     with m4:
         st.metric("Max Drawdown", f"${max_dd:,.2f}")
-
-    # ── Active Position ──
-    st.markdown('<div class="sect">ACTIVE POSITION</div>', unsafe_allow_html=True)
-    _render_position(positions)
-
-    # ── Current Strategy ──
-    st.markdown('<div class="sect">STRATEGY</div>', unsafe_allow_html=True)
-    _render_strategy(status)
 
 
 def _compute_profit_factor(history):
@@ -557,66 +557,14 @@ def _render_strategy(status):
 
 def _tab_activity(status):
     filter_type = st.selectbox(
-        "Filter",
-        ["ALL", "TRADE", "INFO", "ERROR"],
-        label_visibility="collapsed",
+        "Filter", ["ALL", "TRADE", "INFO", "ERROR"], label_visibility="collapsed",
     )
 
-    entries = []
+    entries = _build_activity_entries(status)
 
-    # Trade executions
-    trades = _api("/api/trades", params={"per_page": 100})
-    if trades and trades.get("trades"):
-        for t in trades["trades"]:
-            ts_ms = t.get("timestamp", 0)
-            ts = (
-                datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
-                if ts_ms
-                else None
-            )
-            side = t.get("side", "?")
-            price = t.get("price", 0) or 0
-            amount = t.get("amount", 0) or 0
-            symbol = t.get("symbol", "")
-            cost = t.get("cost", 0) or (price * amount)
-
-            side_color = "#22c55e" if side == "buy" else "#ef4444"
-            msg = (
-                f'<span style="color:{side_color}">{side.upper()}</span> '
-                f"{amount:.6f} {symbol} @ ${price:,.2f} = ${cost:,.2f}"
-            )
-            entries.append({"time": ts, "type": "TRADE", "msg": msg})
-
-    # Bot status
-    if status:
-        errors = status.get("errors", 0) or 0
-        if errors > 0:
-            entries.append(
-                {
-                    "time": datetime.now(timezone.utc),
-                    "type": "ERROR",
-                    "msg": f"{errors} error(s) recorded",
-                }
-            )
-
-        state = status.get("state", "unknown")
-        uptime = status.get("uptime_seconds", 0) or 0
-        h = int(uptime // 3600)
-        m = int((uptime % 3600) // 60)
-        ticks = status.get("ticks", 0)
-        entries.append(
-            {
-                "time": datetime.now(timezone.utc),
-                "type": "INFO",
-                "msg": f"State: {state.upper()} | Uptime: {h}h {m}m | Ticks: {ticks}",
-            }
-        )
-
-    # Filter
     if filter_type != "ALL":
         entries = [e for e in entries if e["type"] == filter_type]
 
-    # Sort newest first
     entries.sort(
         key=lambda e: e["time"] or datetime.min.replace(tzinfo=timezone.utc),
         reverse=True,
@@ -631,7 +579,6 @@ def _tab_activity(status):
         time_str = e["time"].strftime("%H:%M:%S") if e["time"] else "---"
         tag = e["type"].lower()
         tag_cls = f"tag-{tag}" if tag in ("trade", "signal", "error", "info", "warn") else "tag-info"
-
         html.append(
             f'<div class="log-entry">'
             f'<span class="log-time">{time_str}</span>'
@@ -639,8 +586,41 @@ def _tab_activity(status):
             f'<span class="log-msg">{e["msg"]}</span>'
             f"</div>"
         )
-
     st.markdown("".join(html), unsafe_allow_html=True)
+
+
+def _build_activity_entries(status):
+    """Build activity log entries from trades and bot status."""
+    entries = []
+
+    trades = _api("/api/trades", params={"per_page": 100})
+    if trades and trades.get("trades"):
+        for t in trades["trades"]:
+            ts_ms = t.get("timestamp", 0)
+            ts = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc) if ts_ms else None
+            side = t.get("side", "?")
+            price = t.get("price", 0) or 0
+            amount = t.get("amount", 0) or 0
+            symbol = t.get("symbol", "")
+            cost = t.get("cost", 0) or (price * amount)
+            side_color = "#22c55e" if side == "buy" else "#ef4444"
+            msg = (
+                f'<span style="color:{side_color}">{side.upper()}</span> '
+                f"{amount:.6f} {symbol} @ ${price:,.2f} = ${cost:,.2f}"
+            )
+            entries.append({"time": ts, "type": "TRADE", "msg": msg})
+
+    if status:
+        errors = status.get("errors", 0) or 0
+        if errors > 0:
+            entries.append({"time": datetime.now(timezone.utc), "type": "ERROR", "msg": f"{errors} error(s) recorded"})
+        state = status.get("state", "unknown")
+        uptime = status.get("uptime_seconds", 0) or 0
+        h, m = int(uptime // 3600), int((uptime % 3600) // 60)
+        ticks = status.get("ticks", 0)
+        entries.append({"time": datetime.now(timezone.utc), "type": "INFO", "msg": f"State: {state.upper()} | Uptime: {h}h {m}m | Ticks: {ticks}"})
+
+    return entries
 
 
 # ── Tab 3: Grid View ────────────────────────────────────────────────────────
@@ -656,40 +636,31 @@ def _tab_grid(status):
 
     levels = grid_data["levels"]
 
-    # Summary
-    total = len(levels)
-    filled = sum(1 for lv in levels if lv.get("filled"))
-    buys = sum(1 for lv in levels if lv.get("side") == "buy" and not lv.get("filled"))
-    sells = sum(1 for lv in levels if lv.get("side") == "sell" and not lv.get("filled"))
-
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.metric("Total Levels", total)
+        st.metric("Total Levels", len(levels))
     with c2:
-        st.metric("Filled", filled)
+        st.metric("Filled", sum(1 for lv in levels if lv.get("filled")))
     with c3:
-        st.metric("Buy Orders", buys)
+        st.metric("Buy Orders", sum(1 for lv in levels if lv.get("side") == "buy" and not lv.get("filled")))
     with c4:
-        st.metric("Sell Orders", sells)
+        st.metric("Sell Orders", sum(1 for lv in levels if lv.get("side") == "sell" and not lv.get("filled")))
 
-    # Chart
     _grid_chart(levels, current_price)
-
-    # Text ladder
     st.markdown('<div class="sect">LEVEL DETAIL</div>', unsafe_allow_html=True)
+    st.markdown(_grid_level_ladder(levels, current_price), unsafe_allow_html=True)
 
+
+def _grid_level_ladder(levels, current_price):
+    """Build HTML for grid level detail ladder."""
     sorted_levels = sorted(levels, key=lambda x: x["price"], reverse=True)
     html = ['<div style="border:1px solid #2d2d4a;background:#1e1e34;border-radius:6px;overflow:hidden">']
     price_inserted = False
 
     for lv in sorted_levels:
         price = lv["price"]
-
-        # Current price marker
         if current_price and not price_inserted and price < current_price:
-            html.append(
-                f'<div class="grid-current">&#9656; CURRENT ${current_price:,.2f}</div>'
-            )
+            html.append(f'<div class="grid-current">&#9656; CURRENT ${current_price:,.2f}</div>')
             price_inserted = True
 
         side = lv.get("side", "?")
@@ -716,12 +687,10 @@ def _tab_grid(status):
         )
 
     if current_price and not price_inserted:
-        html.append(
-            f'<div class="grid-current">&#9656; CURRENT ${current_price:,.2f}</div>'
-        )
+        html.append(f'<div class="grid-current">&#9656; CURRENT ${current_price:,.2f}</div>')
 
     html.append("</div>")
-    st.markdown("".join(html), unsafe_allow_html=True)
+    return "".join(html)
 
 
 def _grid_chart(levels, current_price):
@@ -807,15 +776,22 @@ def _grid_chart(levels, current_price):
 
 
 def _tab_settings(status):
-    # Bot control
+    _settings_bot_control(status)
+    _settings_strategy_config()
+
+    st.markdown('<div class="sect">DASHBOARD</div>', unsafe_allow_html=True)
+    st.session_state.auto_refresh = st.checkbox("Auto-refresh", value=st.session_state.auto_refresh)
+    st.session_state.refresh_sec = st.slider("Interval (sec)", 5, 60, st.session_state.refresh_sec)
+
+
+def _settings_bot_control(status):
+    """Render bot control section in settings tab."""
     st.markdown('<div class="sect">BOT CONTROL</div>', unsafe_allow_html=True)
 
     if status:
         state = status.get("state", "unknown")
         uptime = status.get("uptime_seconds", 0) or 0
-        h = int(uptime // 3600)
-        m = int((uptime % 3600) // 60)
-
+        h, m = int(uptime // 3600), int((uptime % 3600) // 60)
         c1, c2, c3 = st.columns(3)
         with c1:
             st.metric("State", state.upper())
@@ -840,10 +816,12 @@ def _tab_settings(status):
             r = _api("/api/bot/stop", method="POST")
             st.toast("Bot stopped" if r and r.get("success") else "Failed")
 
-    # Strategy config
-    st.markdown('<div class="sect">STRATEGY</div>', unsafe_allow_html=True)
 
+def _settings_strategy_config():
+    """Render strategy and risk config sections."""
+    st.markdown('<div class="sect">STRATEGY</div>', unsafe_allow_html=True)
     config = _api("/api/bot/config")
+
     if config:
         rows = [
             ("Symbol", config.get("symbol", "---")),
@@ -852,37 +830,22 @@ def _tab_settings(status):
             ("Amount / Level", config.get("amount_per_level", "---")),
             ("AI Enabled", "Yes" if config.get("ai_enabled") else "No"),
         ]
-        html = '<div class="cfg-group">'
-        for k, v in rows:
-            html += f'<div class="cfg-row"><span class="cfg-key">{k}</span><span class="cfg-val">{v}</span></div>'
-        html += "</div>"
-        st.markdown(html, unsafe_allow_html=True)
+        _render_cfg_group(rows)
     else:
-        st.markdown(
-            '<div style="color:#505068;font-size:0.8rem">Not available</div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown('<div style="color:#505068;font-size:0.8rem">Not available</div>', unsafe_allow_html=True)
 
-    # Risk parameters
     st.markdown('<div class="sect">RISK PARAMETERS</div>', unsafe_allow_html=True)
-
     if config:
-        risk_rows = [("Risk Tolerance", config.get("risk_tolerance", "---"))]
-        html = '<div class="cfg-group">'
-        for k, v in risk_rows:
-            html += f'<div class="cfg-row"><span class="cfg-key">{k}</span><span class="cfg-val">{v}</span></div>'
-        html += "</div>"
-        st.markdown(html, unsafe_allow_html=True)
+        _render_cfg_group([("Risk Tolerance", config.get("risk_tolerance", "---"))])
 
-    # Dashboard settings
-    st.markdown('<div class="sect">DASHBOARD</div>', unsafe_allow_html=True)
 
-    st.session_state.auto_refresh = st.checkbox(
-        "Auto-refresh", value=st.session_state.auto_refresh
-    )
-    st.session_state.refresh_sec = st.slider(
-        "Interval (sec)", 5, 60, st.session_state.refresh_sec
-    )
+def _render_cfg_group(rows):
+    """Render a config group card."""
+    html = '<div class="cfg-group">'
+    for k, v in rows:
+        html += f'<div class="cfg-row"><span class="cfg-key">{k}</span><span class="cfg-val">{v}</span></div>'
+    html += "</div>"
+    st.markdown(html, unsafe_allow_html=True)
 
 
 
