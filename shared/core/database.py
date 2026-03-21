@@ -167,7 +167,7 @@ class TradeLog(Base):
     __tablename__ = "trade_logs"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(BigInteger, nullable=False, index=True)  # Unix timestamp in ms
+    timestamp = Column(BigInteger, nullable=False)  # Unix timestamp in ms
     symbol = Column(String(20), nullable=False, index=True)
     side = Column(String(4), nullable=False)  # buy/sell
     price = Column(Numeric(precision=18, scale=8), nullable=False)

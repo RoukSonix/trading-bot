@@ -263,7 +263,7 @@ class LiveTrader:
 
     # ── Grid Management ──────────────────────────────────────────────────
 
-    def setup_grid(self, price: float, atr: float, closes: list[float]) -> list[dict]:
+    def setup_grid(self, price: float, closes: list[float]) -> list[dict]:
         """Calculate grid levels based on current price and trend."""
         trend = detect_trend(
             closes,
@@ -632,7 +632,7 @@ class LiveTrader:
         if not self.grid.levels or new_direction != self.grid.direction:
             log.info(f"Grid rebuild: direction changed {self.grid.direction} → {new_direction}")
             self.level_order_map = {}
-            levels = self.setup_grid(price, atr, closes)
+            levels = self.setup_grid(price, closes)
         else:
             levels = self.grid.levels
             log.info(

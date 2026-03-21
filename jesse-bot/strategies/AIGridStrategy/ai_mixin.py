@@ -270,15 +270,17 @@ class AIMixin:
     def _run_ai_with_timeout(self, coro, timeout: float = AI_TIMEOUT):
         """Run async AI coroutine synchronously with timeout."""
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop is not None and loop.is_running():
                 import concurrent.futures
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     future = pool.submit(asyncio.run, asyncio.wait_for(coro, timeout))
                     return future.result(timeout=timeout)
             else:
-                return loop.run_until_complete(asyncio.wait_for(coro, timeout))
+                return asyncio.run(asyncio.wait_for(coro, timeout))
         except asyncio.TimeoutError:
             raise TimeoutError(f"AI call timed out after {timeout}s")
-        except RuntimeError:
-            return asyncio.run(asyncio.wait_for(coro, timeout))

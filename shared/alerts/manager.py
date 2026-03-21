@@ -338,6 +338,7 @@ Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
                 max_drawdown=max_drawdown,
                 best_trade=best_trade,
                 worst_trade=worst_trade,
+                trades_list=trades_list,
             )
             success = success or result
         

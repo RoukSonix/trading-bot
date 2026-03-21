@@ -114,16 +114,12 @@ grid_levels_filled = Gauge(
 class TradingMetrics:
     """Wrapper class for managing trading metrics."""
     
-    _instance: Optional["TradingMetrics"] = None
     _start_time: float = 0
-    
-    def __new__(cls) -> "TradingMetrics":
-        """Singleton pattern to ensure only one metrics instance exists."""
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._start_time = time.time()
-        return cls._instance
-    
+
+    def __init__(self):
+        """Initialize metrics with start time."""
+        self._start_time = time.time()
+
     # -------------------------------------------------------------------------
     # Trade Metrics
     # -------------------------------------------------------------------------

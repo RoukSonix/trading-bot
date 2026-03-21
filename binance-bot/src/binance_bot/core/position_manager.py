@@ -1,7 +1,6 @@
 """Position and PnL tracking."""
 
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
 from typing import Optional
 from loguru import logger
 
@@ -272,7 +271,6 @@ class PositionManager:
             logger.info("No open positions")
         else:
             for pos in positions:
-                pnl_color = "green" if pos.unrealized_pnl >= 0 else "red"
                 logger.info(f"  {pos.symbol}:")
                 logger.info(f"    Side: {pos.side.upper()}")
                 logger.info(f"    Amount: {pos.amount:.6f}")
