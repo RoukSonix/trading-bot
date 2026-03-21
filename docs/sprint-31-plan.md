@@ -17,7 +17,8 @@
 | `binance-bot/src/binance_bot/bot.py` | `_check_entry_conditions()` | 54 | Extract individual checks into named booleans, return early |
 | `binance-bot/src/binance_bot/bot.py` | `_main_loop()` | 98 | Extract tick phases: `_tick_trading()`, `_tick_monitoring()`, `_tick_status()` |
 | `binance-bot/src/binance_bot/bot.py` | `_execute_trading()` | 143 | Split into `_execute_signal()`, `_execute_paper_trade()`, `_execute_live_trade()` |
-| `binance-bot/src/binance_bot/bot.py` | `_maybe_ai_review()` | 61 | Extract prompt building and response handling |
+| `binance-bot/src/binance_bot/bot.py` | `_maybe_ai_review()` | 62 | Extract prompt building and response handling |
+<!-- VALIDATION NOTE: _maybe_ai_review() is 62 lines (L687-748), not 61. -->
 | `binance-bot/src/binance_bot/bot.py` | `_print_stats()` | 52 | Extract stat formatting into helper |
 | `binance-bot/src/binance_bot/bot.py` | `_write_shared_state()` | 58 | Extract dict building into `_build_state_dict()` |
 | `binance-bot/src/binance_bot/bot.py` | `_handle_emergency_stop()` | 51 | Extract position closing and alert sending |
@@ -36,11 +37,19 @@
 | `shared/ai/agent.py` | `_parse_market_analysis()` | 132 | Extract JSON extraction, field parsing, fallback logic into separate methods |
 | `shared/ai/agent.py` | `_parse_grid_optimization()` | 86 | Reuse consolidated JSON parsing utility |
 | `shared/ai/agent.py` | `_parse_risk_assessment()` | 83 | Reuse consolidated JSON parsing utility |
-| `shared/backtest/engine.py` | (scan needed) | ~696 total | Identify and split any >50 line functions |
-| `shared/dashboard/app.py` | (scan needed) | ~891 total | Identify and split any >50 line functions |
-| `jesse-bot/strategies/AIGridStrategy/__init__.py` | `hyperparameters()` | 116 | Extract into grouped config builders |
+| `shared/backtest/engine.py` | `run()` (x2) | 158, 133 | Split long run methods into phases |
+| `shared/backtest/engine.py` | `_compute_result()` | 89 | Extract metric calculations |
+| `shared/dashboard/app.py` | `_tab_overview()` | 95 | Extract widget builders |
+| `shared/dashboard/app.py` | `_tab_activity()` | 86 | Extract table/chart builders |
+| `shared/dashboard/app.py` | `_tab_grid()` | 76 | Extract grid visualization |
+| `shared/dashboard/app.py` | `_grid_chart()` | 77 | Extract chart rendering |
+| `shared/dashboard/app.py` | `_tab_settings()` | 77 | Extract settings form builders |
+| `jesse-bot/strategies/AIGridStrategy/__init__.py` | `hyperparameters()` | 114 | Extract into grouped config builders |
+<!-- VALIDATION NOTE: hyperparameters() is 114 lines (L103-216), not 116. -->
+| `binance-bot/src/binance_bot/core/data_collector.py` | `fetch_and_store_ohlcv()` | 56 | Extract storage logic |
 
-**Total functions to split: ~27**
+**Total functions to split: ~35**
+<!-- VALIDATION NOTE: Scan found 8 additional >50L functions (3 in backtest/engine.py, 5 in dashboard/app.py), plus data_collector. Updated total from ~27 to ~35. -->
 
 ---
 
@@ -48,12 +57,15 @@
 
 | File | Location | Dead Code | Action |
 |------|----------|-----------|--------|
-| `binance-bot/src/binance_bot/bot.py` | ~L693 | `pass` in first AI review trigger branch | Remove unreachable branch |
-| `binance-bot/src/binance_bot/core/order_manager.py` | ~L328-330 | `except` that only re-raises after rollback | Simplify to context manager or let propagate |
-| `shared/ai/agent.py` | Multiple locations | Verbose fallback parsing paths after JSON attempt | Remove fallback paths that are never reached when JSON parse succeeds |
-| `shared/ai/agent.py` | ~L215-217 | Negation regex with potential escape issues | Fix or remove if unused |
+| `binance-bot/src/binance_bot/bot.py` | L692-697 | `pass` in first AI review trigger branch | Simplify: replace if/pass/else with `if last_review is not None and interval not elapsed: return` |
+<!-- VALIDATION NOTE: The `pass` branch at L692 IS reachable (first review case). Not dead code — it's a deliberate no-op. Simplify the if/else structure, don't "remove unreachable branch". -->
+| `binance-bot/src/binance_bot/core/order_manager.py` | L328-330 | `except` that only re-raises after rollback | Simplify to context manager or let propagate |
+<!-- VALIDATION NOTE: This is valid error handling (rollback + re-raise), not dead code. Move to §1.6 error handling instead. -->
+| `shared/ai/agent.py` | ~L215-217 | Negation regex — review for correctness | Review regex edge cases (e.g. `{0,4}` gap may miss close negations) |
+<!-- VALIDATION NOTE: _NEGATION_RE at L215 IS actively used by _keyword_negated() at L221. NOT dead/unused. Moved from "remove" to "review". -->
 
-**Estimated dead code removal: ~80-120 lines**
+**Estimated dead code removal: ~20-40 lines**
+<!-- VALIDATION NOTE: Original estimate of 80-120 lines was inflated. The agent.py fallback paths are NOT dead code — they're active fallbacks for non-JSON LLM responses. The negation regex is actively used. Reduced estimate to reflect actual dead code (the pass branch simplification + minor cleanup). -->
 
 ---
 
@@ -65,10 +77,14 @@
 | **Response field extraction** | `_parse_market_analysis()`, `_parse_grid_optimization()`, `_parse_risk_assessment()` | Use `parse_llm_json()` + field-specific validators |
 | **Order response parsing** | `create_limit_order()`, `create_market_order()` in `order_manager.py` | Extract `_parse_order_response(response)` |
 | **Position update logic (long/short)** | `grid.py` `_execute_long_paper()` / `_execute_short_paper()` / `_update_long_position()` / `_update_short_position()` | Parameterize direction: `_execute_paper(side)`, `_update_position(side)` |
-| **Error alert pattern** | `bot.py` L525-530, L939-943 | Extract `_send_error_alert(error, context)` |
-| **Negation detection regex** | `agent.py`, `ai_grid.py` | Move to `shared/ai/parsing.py` as constant |
+<!-- VALIDATION NOTE: Short sells in _execute_short_paper() (L718-726) don't check balance before crediting (opening short gives cash). Long buys in _execute_long_paper() (L694-703) DO check paper_balance >= cost. Parameterized _execute_paper(side) MUST preserve this asymmetry. -->
+| **JSON parsing** | `agent.py` `_try_parse_json()` vs `ai_grid.py` `_extract_json()` | Consolidate into shared utility |
+<!-- VALIDATION NOTE: _try_parse_json() (agent.py L135-162) tries full-text JSON parse first, then brace extraction. _extract_json() (ai_grid.py L28-44) only does brace extraction. Consolidated utility must preserve the full-text-first approach from agent.py. -->
+<!-- VALIDATION NOTE: Removed "Error alert pattern" — bot.py L525-530 and L939-943 already call self.alert_manager.send_error_alert(). These are two call sites with different params, not duplicate implementations. -->
+<!-- VALIDATION NOTE: Removed "Negation detection regex" duplication — no negation regex exists in ai_grid.py. _NEGATION_RE only exists in agent.py (L215). No consolidation needed. -->
 
-**Estimated lines saved: ~200-300 lines**
+**Estimated lines saved: ~150-250 lines**
+<!-- VALIDATION NOTE: Reduced estimate after removing 2 invalid consolidation targets. -->
 
 ---
 
@@ -78,10 +94,13 @@
 |------|----------|-------|--------|
 | `binance-bot/src/binance_bot/bot.py` | `_main_loop()` | 3+ nesting levels | Extract phases into named methods, use early returns |
 | `binance-bot/src/binance_bot/strategies/grid.py` | `check_tp_sl()` L525-583 | 4+ nesting levels | Guard clause pattern, extract `_should_take_profit()` / `_should_stop_loss()` |
-| `binance-bot/src/binance_bot/strategies/grid.py` | `get_status()` L869-935 | 3+ nesting levels | Extract `_format_level_status()` |
+| `binance-bot/src/binance_bot/strategies/grid.py` | `get_status()` L867-936 | 1-2 nesting levels (mostly flat) | Extract `_format_level_status()` — low priority |
+<!-- VALIDATION NOTE: get_status() is mostly flat dict construction and list comprehensions. Max nesting is 1-2 levels (if self.center_price block). Downgraded from 3+ to low priority. -->
 | `binance-bot/src/binance_bot/core/position_manager.py` | `update_position()` L65-118 | 4+ nesting levels | Split long/short branches into methods |
-| `shared/ai/agent.py` | `_parse_market_analysis()` | Complex nested try/except | Flatten with early returns |
-| `binance-bot/src/binance_bot/strategies/ai_grid.py` | `periodic_review()` L382-412 | Nested try/except | Flatten with consolidated error handler |
+| `shared/ai/agent.py` | `_parse_market_analysis()` L229-360 | Length (132 lines), not nesting | Reduce length via consolidated JSON utility; nesting is already shallow |
+<!-- VALIDATION NOTE: _parse_market_analysis() doesn't have complex nested try/except. It has one _try_parse_json() call then linear field extraction. Main issue is length, not nesting depth. -->
+| `binance-bot/src/binance_bot/strategies/ai_grid.py` | `periodic_review()` L299-412 | Single outer try/except wrapping method body | Split method to reduce length; nesting is acceptable at 1 level |
+<!-- VALIDATION NOTE: L382-412 is actually prompt string construction, not nested try/except. The try at L378 is the only exception handler. Plan line reference was misleading. -->
 
 ---
 
@@ -152,11 +171,11 @@ Create `SIMPLIFICATION_REPORT.md` with:
 | Metric | Before | After | Delta |
 |--------|--------|-------|-------|
 | Total lines | 19,245 | TBD | TBD |
-| Functions >50 lines | ~27 | Target: 0 | TBD |
+| Functions >50 lines | ~35 | Target: 0 | TBD |
 | Magic numbers | ~50+ | Target: 0 | TBD |
 | Bare except blocks | 22+ | Target: 0 | TBD |
 | Duplicate patterns | 6 major | Target: 0 | TBD |
-| Dead code paths | 4+ | Target: 0 | TBD |
+| Dead code paths | 2 | Target: 0 | TBD |
 | Test pass rate | TBD | 100% | - |
 
 ---
@@ -165,22 +184,23 @@ Create `SIMPLIFICATION_REPORT.md` with:
 
 | File | Lines | Issues | Priority |
 |------|-------|--------|----------|
-| `binance-bot/src/binance_bot/bot.py` | 1,010 | 9 functions >50L, magic numbers, duplicates | **HIGH** |
-| `binance-bot/src/binance_bot/strategies/grid.py` | 970 | 5 functions >50L, magic numbers, nesting | **HIGH** |
-| `shared/ai/agent.py` | 680 | 3 functions >50L, massive duplicate parsing | **HIGH** |
-| `binance-bot/src/binance_bot/strategies/ai_grid.py` | 514 | 3 functions >50L, magic numbers, duplicates | **HIGH** |
-| `binance-bot/src/binance_bot/core/order_manager.py` | 336 | 2 functions >50L, 8 bare excepts, duplicates | MEDIUM |
-| `binance-bot/src/binance_bot/core/position_manager.py` | 286 | 1 function >50L, deep nesting | MEDIUM |
-| `binance-bot/src/binance_bot/core/emergency.py` | 284 | 1 function >50L, magic numbers | MEDIUM |
-| `jesse-bot/strategies/AIGridStrategy/__init__.py` | 673 | 1 function >50L, magic numbers | MEDIUM |
+<!-- VALIDATION NOTE: All line counts corrected +1 (original counts excluded trailing newline). -->
+| `binance-bot/src/binance_bot/bot.py` | 1,011 | 9 functions >50L, magic numbers, duplicates | **HIGH** |
+| `binance-bot/src/binance_bot/strategies/grid.py` | 971 | 5 functions >50L, magic numbers, nesting | **HIGH** |
+| `shared/ai/agent.py` | 681 | 3 functions >50L, massive duplicate parsing | **HIGH** |
+| `binance-bot/src/binance_bot/strategies/ai_grid.py` | 515 | 3 functions >50L, magic numbers, duplicates | **HIGH** |
+| `binance-bot/src/binance_bot/core/order_manager.py` | 337 | 2 functions >50L, 8 bare excepts, duplicates | MEDIUM |
+| `binance-bot/src/binance_bot/core/position_manager.py` | 287 | 1 function >50L, deep nesting | MEDIUM |
+| `binance-bot/src/binance_bot/core/emergency.py` | 285 | 1 function >50L, magic numbers | MEDIUM |
+| `jesse-bot/strategies/AIGridStrategy/__init__.py` | 674 | 1 function >50L (114 lines, not 116), magic numbers | MEDIUM |
 | `jesse-bot/strategies/AIGridStrategy/grid_logic.py` | 367 | Magic numbers | LOW |
 | `shared/strategies/engine.py` | 169 | Magic numbers | LOW |
 | `shared/risk/position_sizer.py` | 225 | Magic numbers | LOW |
 | `shared/risk/limits.py` | 282 | Magic numbers | LOW |
-| `shared/backtest/engine.py` | 696 | Needs scan for >50L functions | MEDIUM |
-| `shared/dashboard/app.py` | 891 | Needs scan for >50L functions | MEDIUM |
+| `shared/backtest/engine.py` | 696 | 3 functions >50L: run() x2 (158, 133 lines), _compute_result() (89 lines) | **HIGH** |
+| `shared/dashboard/app.py` | 891 | 5 functions >50L: _tab_overview (95), _tab_activity (86), _tab_grid (76), _grid_chart (77), _tab_settings (77) | **HIGH** |
 | `binance-bot/src/binance_bot/core/exchange.py` | 181 | Magic retry constants | LOW |
-| `binance-bot/src/binance_bot/core/data_collector.py` | 155 | 1 function >50L, magic numbers | LOW |
+| `binance-bot/src/binance_bot/core/data_collector.py` | 155 | 1 function >50L (56 lines), magic numbers | LOW |
 
 **New file to create:** `shared/constants.py` — centralized named constants
 **New file to create:** `shared/ai/parsing.py` — consolidated LLM response parsing
