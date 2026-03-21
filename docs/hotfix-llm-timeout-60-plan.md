@@ -45,13 +45,25 @@ AI_TIMEOUT = 60
 This is a separate constant (not imported from `shared/constants.py`). Used by
 `AIMixin._run_ai_with_timeout()` (line 270) as the default timeout parameter.
 
+### 3. `docs/BUGS.md` — line 18
+
+```python
+# before
+**Fix:** Added `timeout=30` to ChatOpenAI constructor and `asyncio.wait_for(timeout=30)` in `_call_llm()`.
+
+# after
+**Fix:** Added `timeout=60` to ChatOpenAI constructor and `asyncio.wait_for(timeout=60)` in `_call_llm()`.
+```
+
+Keeps documentation consistent with the actual constant values.
+
 ### Files that do NOT need changes
 
 | File | Reason |
 |------|--------|
 | `shared/ai/agent.py` | Reads `LLM_TIMEOUT_SEC` from constants — auto-updated |
 | `tests/unit/test_bug_fixes.py` | Tests check for `wait_for` and `timeout` keywords in source, not the numeric value; SMTP test checks `timeout=30` in `email.py` (unrelated) |
-| `docs/BUGS.md` | BUG-002 entry mentions `timeout=30` — cosmetic, not blocking |
+| `docs/BUGS.md` | BUG-002 entry mentions `timeout=30` — update to `timeout=60` for accuracy |
 
 ## Risks
 
@@ -73,6 +85,17 @@ pytest tests/ -v
 # Manual verification
 grep -n 'LLM_TIMEOUT_SEC\|AI_TIMEOUT' shared/constants.py jesse-bot/strategies/AIGridStrategy/ai_mixin.py
 ```
+
+## VALIDATION NOTE (2026-03-21)
+
+All file/line targets verified accurate. One additional change added:
+
+- **`docs/BUGS.md` line 18** — update `timeout=30` → `timeout=60` in BUG-002 fix
+  description to keep docs consistent with the new value.
+
+No other LLM/AI-related 30s timeouts found. The only other `timeout=30` references
+are SQLite busy_timeout (`shared/core/database.py`) and SMTP timeout
+(`shared/alerts/email.py`) — both unrelated and should NOT be changed.
 
 ## Deployment note
 
