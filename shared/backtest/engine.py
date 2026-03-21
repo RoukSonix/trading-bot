@@ -171,36 +171,13 @@ class BacktestEngine:
     ) -> BacktestResult:
         """Run backtest with strict chronological data access.
 
-        Anti look-ahead bias:
-        - Strategy only sees data UP TO current candle
-        - No future data leakage
-        - Fills at next candle open (not current close)
-
-        Args:
-            strategy: Trading strategy instance.
-            start_date: ISO date string to filter start.
-            end_date: ISO date string to filter end.
-            data: OHLCV DataFrame with DatetimeIndex.
-            params: Optional parameter dict for metadata.
-
-        Returns:
-            BacktestResult with comprehensive metrics.
+        Anti look-ahead bias: strategy only sees data UP TO current candle,
+        fills at next candle open (not current close).
         """
         from binance_bot.strategies.base import SignalType
 
-        if data is None or data.empty:
-            logger.warning("No data provided.")
-            return BacktestResult(config_name="empty")
-
-        df = data.copy()
-
-        # Apply date filters
-        if start_date is not None:
-            df = df[df.index >= pd.Timestamp(start_date)]
-        if end_date is not None:
-            df = df[df.index <= pd.Timestamp(end_date)]
-        if df.empty:
-            logger.warning("No data after date filtering.")
+        df = self._prepare_data(data, start_date, end_date)
+        if df is None:
             return BacktestResult(config_name="empty")
 
         # State
@@ -214,7 +191,6 @@ class BacktestEngine:
         max_dd_duration = 0
         current_dd_duration = 0
 
-        # Reset strategy grid
         strategy.levels = []
         strategy.center_price = None
 
@@ -222,54 +198,14 @@ class BacktestEngine:
             row = df.iloc[i]
             timestamp = df.index[i]
             current_price = row["close"]
-            candle_open = row["open"]
 
-            # ----- FILL PENDING ORDERS at this candle's open -----
-            for order in pending_orders:
-                fill_price = self._apply_slippage(candle_open, order["side"])
-                cost = fill_price * order["amount"]
-                commission_cost = cost * self.commission
-
-                if order["side"] == "BUY":
-                    total_cost = cost + commission_cost
-                    if balance >= total_cost:
-                        balance -= total_cost
-                        holdings += order["amount"]
-                        trades.append({
-                            "timestamp": str(timestamp),
-                            "type": "BUY",
-                            "signal_price": order["signal_price"],
-                            "fill_price": fill_price,
-                            "amount": order["amount"],
-                            "cost": total_cost,
-                            "commission": commission_cost,
-                            "balance": balance,
-                            "holdings": holdings,
-                        })
-                else:  # SELL
-                    if holdings >= order["amount"]:
-                        revenue = cost - commission_cost
-                        balance += revenue
-                        holdings -= order["amount"]
-                        # PnL: compare with last buy price
-                        entry_price = order.get("entry_price", fill_price)
-                        pnl = (fill_price - entry_price) * order["amount"] - commission_cost
-                        trades.append({
-                            "timestamp": str(timestamp),
-                            "type": "SELL",
-                            "signal_price": order["signal_price"],
-                            "fill_price": fill_price,
-                            "amount": order["amount"],
-                            "revenue": revenue,
-                            "pnl": pnl,
-                            "commission": commission_cost,
-                            "balance": balance,
-                            "holdings": holdings,
-                        })
-
+            # Fill pending orders at candle open
+            balance, holdings = self._fill_pending_orders(
+                pending_orders, row["open"], timestamp, balance, holdings, trades,
+            )
             pending_orders.clear()
 
-            # ----- EQUITY tracking -----
+            # Equity tracking
             equity = balance + holdings * current_price
             equity_values.append(equity)
 
@@ -283,11 +219,10 @@ class BacktestEngine:
             dd_pct = ((peak_equity - equity) / peak_equity * 100) if peak_equity > 0 else 0.0
             drawdown_values.append(dd_pct)
 
-            # ----- STRATEGY gets data UP TO current candle only -----
+            # Strategy sees data UP TO current candle only
             visible_data = df.iloc[: i + 1]
             signals = strategy.calculate_signals(visible_data, current_price)
 
-            # Record last buy price for PnL tracking on sells
             last_buy_price = 0.0
             buy_trades = [t for t in trades if t["type"] == "BUY"]
             if buy_trades:
@@ -303,22 +238,69 @@ class BacktestEngine:
                     "entry_price": last_buy_price,
                 })
 
-        # ----- Final equity -----
-        final_price = df["close"].iloc[-1]
-        final_balance = balance + holdings * final_price
-
-        # ----- Compute metrics -----
+        final_balance = balance + holdings * df["close"].iloc[-1]
         result = self._compute_result(
-            trades=trades,
-            equity_values=equity_values,
-            drawdown_values=drawdown_values,
-            max_dd_duration=max_dd_duration,
-            final_balance=final_balance,
-            df=df,
-            params=params,
+            trades=trades, equity_values=equity_values,
+            drawdown_values=drawdown_values, max_dd_duration=max_dd_duration,
+            final_balance=final_balance, df=df, params=params,
         )
         logger.info(result.summary())
         return result
+
+    def _prepare_data(
+        self, data: Optional[pd.DataFrame], start_date: Optional[str], end_date: Optional[str],
+    ) -> Optional[pd.DataFrame]:
+        """Validate and filter data. Returns None if no data."""
+        if data is None or data.empty:
+            logger.warning("No data provided.")
+            return None
+        df = data.copy()
+        if start_date is not None:
+            df = df[df.index >= pd.Timestamp(start_date)]
+        if end_date is not None:
+            df = df[df.index <= pd.Timestamp(end_date)]
+        if df.empty:
+            logger.warning("No data after date filtering.")
+            return None
+        return df
+
+    def _fill_pending_orders(
+        self, orders: list[dict], candle_open: float, timestamp,
+        balance: float, holdings: float, trades: list[dict],
+    ) -> tuple[float, float]:
+        """Fill pending orders at candle open price with slippage."""
+        for order in orders:
+            fill_price = self._apply_slippage(candle_open, order["side"])
+            cost = fill_price * order["amount"]
+            commission_cost = cost * self.commission
+
+            if order["side"] == "BUY":
+                total_cost = cost + commission_cost
+                if balance >= total_cost:
+                    balance -= total_cost
+                    holdings += order["amount"]
+                    trades.append({
+                        "timestamp": str(timestamp), "type": "BUY",
+                        "signal_price": order["signal_price"], "fill_price": fill_price,
+                        "amount": order["amount"], "cost": total_cost,
+                        "commission": commission_cost, "balance": balance,
+                        "holdings": holdings,
+                    })
+            else:  # SELL
+                if holdings >= order["amount"]:
+                    revenue = cost - commission_cost
+                    balance += revenue
+                    holdings -= order["amount"]
+                    entry_price = order.get("entry_price", fill_price)
+                    pnl = (fill_price - entry_price) * order["amount"] - commission_cost
+                    trades.append({
+                        "timestamp": str(timestamp), "type": "SELL",
+                        "signal_price": order["signal_price"], "fill_price": fill_price,
+                        "amount": order["amount"], "revenue": revenue,
+                        "pnl": pnl, "commission": commission_cost,
+                        "balance": balance, "holdings": holdings,
+                    })
+        return balance, holdings
 
     # ----- helpers ----------------------------------------------------------
 

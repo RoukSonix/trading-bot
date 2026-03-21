@@ -196,7 +196,7 @@ class TestP1Bot5EmaPeriodMatch:
     def test_engine_indicators_ema_keys_match_data(self):
         """ema_8 and ema_21 should be computed with span=8 and span=21."""
         import binance_bot.bot as bot_module
-        source = inspect.getsource(bot_module.TradingBot._execute_trading)
+        source = inspect.getsource(bot_module.TradingBot._run_strategy_engine)
         # Should compute actual EMA with correct spans
         assert "span=8" in source, "ema_8 should use span=8"
         assert "span=21" in source, "ema_21 should use span=21"
@@ -213,7 +213,7 @@ class TestP1Bot6PnlRecording:
     def test_sell_trade_records_nonzero_pnl(self):
         """SELL trades should compute PnL from entry price."""
         import binance_bot.bot as bot_module
-        source = inspect.getsource(bot_module.TradingBot._execute_trading)
+        source = inspect.getsource(bot_module.TradingBot._calculate_signal_pnl)
         # Verify PnL calculation for SELL signals
         assert "SignalType.SELL" in source
         assert "long_entry_price" in source
@@ -223,13 +223,13 @@ class TestP1Bot6PnlRecording:
     def test_risk_limits_triggered_on_losses(self):
         """risk_limits.record_trade should receive non-zero PnL."""
         import binance_bot.bot as bot_module
-        source = inspect.getsource(bot_module.TradingBot._execute_trading)
+        source = inspect.getsource(bot_module.TradingBot._process_signals)
         assert "risk_limits.record_trade(pnl" in source
 
     def test_short_cover_records_pnl(self):
         """Short cover (BUY with negative amount) should compute PnL."""
         import binance_bot.bot as bot_module
-        source = inspect.getsource(bot_module.TradingBot._execute_trading)
+        source = inspect.getsource(bot_module.TradingBot._calculate_signal_pnl)
         assert "short_entry_price" in source
         # Should have: (entry - cover_price) * amount pattern
         assert "signal.amount < 0" in source or "amount < 0" in source

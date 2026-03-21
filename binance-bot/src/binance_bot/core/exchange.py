@@ -9,9 +9,10 @@ from typing import Optional
 from decimal import Decimal
 
 from shared.config import settings
+from shared.constants import MAX_RETRIES, RETRY_BASE_DELAY, RETRY_BACKOFF_BASE
 
 
-def _retry_on_network_error(max_retries: int = 3, base_delay: float = 1.0):
+def _retry_on_network_error(max_retries: int = MAX_RETRIES, base_delay: float = RETRY_BASE_DELAY):
     """Retry on transient CCXT errors with exponential backoff."""
     def decorator(func):
         @wraps(func)
@@ -22,7 +23,7 @@ def _retry_on_network_error(max_retries: int = 3, base_delay: float = 1.0):
                     return func(*args, **kwargs)
                 except (ccxt.NetworkError, ccxt.ExchangeNotAvailable) as e:
                     last_error = e
-                    delay = base_delay * (2 ** attempt)
+                    delay = base_delay * (RETRY_BACKOFF_BASE ** attempt)
                     logger.warning(f"{func.__name__} attempt {attempt + 1}/{max_retries} failed: {e}. Retrying in {delay}s...")
                     time.sleep(delay)
             raise last_error
@@ -54,7 +55,7 @@ class ExchangeClient:
             raise RuntimeError("Exchange not connected. Call connect() first.")
         return self._exchange
     
-    @_retry_on_network_error(max_retries=3)
+    @_retry_on_network_error()
     def get_balance(self, currency: str = "USDT") -> dict:
         """Get account balance.
         
@@ -76,7 +77,7 @@ class ExchangeClient:
         
         return {"currency": currency, "free": 0, "used": 0, "total": 0}
     
-    @_retry_on_network_error(max_retries=3)
+    @_retry_on_network_error()
     def get_all_balances(self, min_value: float = 0.0) -> list[dict]:
         """Get all non-zero balances.
         
@@ -102,7 +103,7 @@ class ExchangeClient:
         
         return sorted(balances, key=lambda x: x["total"], reverse=True)
     
-    @_retry_on_network_error(max_retries=3)
+    @_retry_on_network_error()
     def get_ticker(self, symbol: str = "BTC/USDT") -> dict:
         """Get current ticker for a symbol.
         
@@ -125,7 +126,7 @@ class ExchangeClient:
             "change_percent": ticker["percentage"],
         }
     
-    @_retry_on_network_error(max_retries=3)
+    @_retry_on_network_error()
     def get_order_book(self, symbol: str = "BTC/USDT", limit: int = 10) -> dict:
         """Get order book for a symbol.
         
@@ -145,7 +146,7 @@ class ExchangeClient:
             "spread": book["asks"][0][0] - book["bids"][0][0] if book["asks"] and book["bids"] else 0,
         }
     
-    @_retry_on_network_error(max_retries=3)
+    @_retry_on_network_error()
     def get_ohlcv(
         self, 
         symbol: str = "BTC/USDT", 

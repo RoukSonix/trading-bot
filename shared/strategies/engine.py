@@ -2,6 +2,7 @@
 
 from loguru import logger
 
+from shared.constants import RSI_OVERSOLD, RSI_OVERBOUGHT
 from shared.strategies.base import StrategyInterface
 from shared.strategies.regime import MarketRegime, MarketRegimeDetector
 
@@ -60,7 +61,7 @@ class StrategyEngine:
 
         # Check for mean reversion override based on RSI
         rsi = indicators.get("rsi_14", 50)
-        if rsi < 30 or rsi > 70:
+        if rsi < RSI_OVERSOLD or rsi > RSI_OVERBOUGHT:
             target_name = "MeanReversionStrategy"
         else:
             target_name = self.regime_map.get(regime, "GridStrategyAdapter")

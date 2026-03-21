@@ -242,16 +242,16 @@ class TestP1Strat11NestedJson:
     """AI grid should parse nested JSON from LLM responses."""
 
     def test_parse_flat_json(self):
-        from binance_bot.strategies.ai_grid import _extract_json
+        from shared.ai.parsing import parse_llm_json
 
-        result = _extract_json('{"action": "CONTINUE", "risk": "LOW"}')
+        result = parse_llm_json('{"action": "CONTINUE", "risk": "LOW"}')
         assert result is not None
         assert result["action"] == "CONTINUE"
 
     def test_parse_nested_json(self):
-        from binance_bot.strategies.ai_grid import _extract_json
+        from shared.ai.parsing import parse_llm_json
 
-        result = _extract_json('{"action": "ADJUST", "params": {"lower": 80000}}')
+        result = parse_llm_json('{"action": "ADJUST", "params": {"lower": 80000}}')
         assert result is not None
         assert result["action"] == "ADJUST"
         assert result["params"]["lower"] == 80000
@@ -264,9 +264,9 @@ class TestP1Strat11NestedJson:
         assert result["action"] == "PAUSE"
 
     def test_parse_no_json(self):
-        from binance_bot.strategies.ai_grid import _extract_json
+        from shared.ai.parsing import parse_llm_json
 
-        result = _extract_json("Just a plain text response")
+        result = parse_llm_json("Just a plain text response")
         assert result is None
 
 
@@ -354,26 +354,26 @@ class TestP1Ai3JsonFirstParsing:
         return agent
 
     def test_try_parse_json_flat(self):
-        agent = self._agent()
-        result = agent._try_parse_json('{"trend": "bullish"}')
+        from shared.ai.parsing import parse_llm_json
+        result = parse_llm_json('{"trend": "bullish"}')
         assert result == {"trend": "bullish"}
 
     def test_try_parse_json_markdown(self):
-        agent = self._agent()
-        result = agent._try_parse_json('```json\n{"trend": "bearish"}\n```')
+        from shared.ai.parsing import parse_llm_json
+        result = parse_llm_json('```json\n{"trend": "bearish"}\n```')
         assert result is not None
         assert result["trend"] == "bearish"
 
     def test_try_parse_json_nested(self):
-        agent = self._agent()
-        result = agent._try_parse_json('Here is the analysis: {"trend": "bullish", "details": {"rsi": 65}}')
+        from shared.ai.parsing import parse_llm_json
+        result = parse_llm_json('Here is the analysis: {"trend": "bullish", "details": {"rsi": 65}}')
         assert result is not None
         assert result["trend"] == "bullish"
         assert result["details"]["rsi"] == 65
 
     def test_try_parse_json_no_json(self):
-        agent = self._agent()
-        result = agent._try_parse_json("No JSON here at all")
+        from shared.ai.parsing import parse_llm_json
+        result = parse_llm_json("No JSON here at all")
         assert result is None
 
     def test_parse_market_json(self):

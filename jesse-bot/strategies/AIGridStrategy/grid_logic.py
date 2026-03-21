@@ -7,6 +7,8 @@ Extracted for testability outside Docker/Redis environment.
 from dataclasses import dataclass, field
 from typing import Optional
 
+from shared.constants import MAX_GRID_FILL_PCT
+
 
 @dataclass
 class GridConfig:
@@ -139,7 +141,7 @@ class GridManager:
         self._last_filled_buy = None
         self._last_filled_sell = None
 
-    def filter_max_levels(self, max_fill_pct: float = 0.7) -> bool:
+    def filter_max_levels(self, max_fill_pct: float = MAX_GRID_FILL_PCT) -> bool:
         """Check if we haven't exceeded max filled levels."""
         total_levels = len(self.levels) if self.levels else self.config.grid_levels_count * 2
         max_filled = total_levels * max_fill_pct

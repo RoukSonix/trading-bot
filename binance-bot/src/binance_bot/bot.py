@@ -18,6 +18,14 @@ from typing import Optional
 from loguru import logger
 
 from shared.config import settings
+from shared.constants import (
+    TICK_INTERVAL_SEC,
+    RULES_CHECK_INTERVAL,
+    STATUS_UPDATE_INTERVAL,
+    BID_FALLBACK_FACTOR,
+    ASK_FALLBACK_FACTOR,
+    CANDLE_FETCH_LIMIT,
+)
 from binance_bot.core.exchange import exchange_client
 from shared.core.indicators import Indicators
 from binance_bot.strategies import AIGridStrategy, AIGridConfig, SignalType
@@ -403,10 +411,10 @@ class TradingBot:
             ticker = exchange_client.get_ticker(self.symbol)
         
         order_book = exchange_client.get_order_book(self.symbol)
-        best_bid = order_book["bids"][0][0] if order_book["bids"] else ticker["last"] * 0.999
-        best_ask = order_book["asks"][0][0] if order_book["asks"] else ticker["last"] * 1.001
-        
-        ohlcv = exchange_client.get_ohlcv(self.symbol, timeframe="1h", limit=100)
+        best_bid = order_book["bids"][0][0] if order_book["bids"] else ticker["last"] * BID_FALLBACK_FACTOR
+        best_ask = order_book["asks"][0][0] if order_book["asks"] else ticker["last"] * ASK_FALLBACK_FACTOR
+
+        ohlcv = exchange_client.get_ohlcv(self.symbol, timeframe="1h", limit=CANDLE_FETCH_LIMIT)
         ohlcv_df = Indicators.to_dataframe(ohlcv)
         indicators_df = Indicators.add_all_indicators(ohlcv_df)
         
@@ -434,7 +442,7 @@ class TradingBot:
     
     async def _main_loop(self):
         """Main trading loop with state management."""
-        tick_interval = 5  # seconds between price checks
+        tick_interval = TICK_INTERVAL_SEC
         rules_check_counter = 0
         
         while self.running:
@@ -480,8 +488,8 @@ class TradingBot:
                 # Update shared state with current price
                 self._write_shared_state(current_price)
                 
-                # Evaluate alert rules every 12 ticks (~1 minute)
-                if rules_check_counter >= 12:
+                # Evaluate alert rules periodically
+                if rules_check_counter >= RULES_CHECK_INTERVAL:
                     rules_check_counter = 0
                     triggered = await self.rules_engine.evaluate_all()
                     if triggered:
@@ -511,8 +519,8 @@ class TradingBot:
                 # Periodic news sentiment fetch (~15 min)
                 await self._maybe_fetch_news()
 
-                # Status update every 60 ticks (~5 min)
-                if self.ticks % 60 == 0:
+                # Periodic status update
+                if self.ticks % STATUS_UPDATE_INTERVAL == 0:
                     self._print_status(current_price)
                 
                 await asyncio.sleep(tick_interval)
@@ -542,84 +550,98 @@ class TradingBot:
     
     async def _execute_trading(self, current_price: float, ticker: Optional[dict] = None):
         """Execute grid trading logic with risk management."""
-        # Check if trading is allowed
+        if not await self._check_risk_limits(current_price):
+            return
+
+        data = await self._fetch_market_data(ticker=ticker)
+        await self._run_strategy_engine(data, current_price)
+        await self._check_stop_loss(current_price)
+        await self._process_signals(data, current_price)
+
+    async def _check_risk_limits(self, current_price: float) -> bool:
+        """Check if trading is allowed. Returns False if halted."""
         can_trade, reason = self.risk_limits.can_trade()
         if not can_trade:
             if self.state == BotState.TRADING:
                 logger.warning(f"🛑 Trading halted: {reason}")
                 self.state = BotState.PAUSED
-
                 await self.alert_manager.send_status_alert(
                     status="paused",
                     symbol=self.symbol,
                     current_price=current_price,
                     reason=f"Risk limit: {reason}",
                 )
+            return False
+        return True
+
+    async def _run_strategy_engine(self, data: dict, current_price: float):
+        """Evaluate regime and get signal from multi-strategy engine."""
+        if self.strategy_mode != "auto" and self.strategy_mode not in StrategyRegistry.list_all():
             return
 
-        data = await self._fetch_market_data(ticker=ticker)
+        prev_strategy = self.strategy_engine.active_strategy_name
+        candles = data["indicators_df"].reset_index().to_dict("records")
+        latest = data["indicators_df"].iloc[-1]
+        engine_indicators = {
+            "ema_8": float(data["indicators_df"]["close"].ewm(span=8, adjust=False).mean().iloc[-1]),
+            "ema_21": float(data["indicators_df"]["close"].ewm(span=21, adjust=False).mean().iloc[-1]),
+            "rsi_14": float(latest.get("rsi", 50)),
+            "bb_upper": float(latest.get("bb_upper", current_price * 1.02)),
+            "bb_lower": float(latest.get("bb_lower", current_price * 0.98)),
+            "bb_middle": float(latest.get("bb_middle", current_price)),
+            "atr": float(latest.get("atr", current_price * 0.01)),
+            "adx": 0,
+            "highest_20": float(data["indicators_df"]["high"].rolling(20).max().iloc[-1]) if len(data["indicators_df"]) >= 20 else current_price,
+            "lowest_20": float(data["indicators_df"]["low"].rolling(20).min().iloc[-1]) if len(data["indicators_df"]) >= 20 else current_price,
+            "volume_sma": float(data["indicators_df"]["volume"].rolling(20).mean().iloc[-1]) if len(data["indicators_df"]) >= 20 else 0,
+        }
+        engine_signal = self.strategy_engine.get_signal(candles, engine_indicators, current_price)
 
-        # Multi-strategy engine: evaluate regime and get signal (Sprint 22)
-        if self.strategy_mode == "auto" or self.strategy_mode in StrategyRegistry.list_all():
-            prev_strategy = self.strategy_engine.active_strategy_name
-            candles = data["indicators_df"].reset_index().to_dict("records")
-            latest = data["indicators_df"].iloc[-1]
-            engine_indicators = {
-                "ema_8": float(data["indicators_df"]["close"].ewm(span=8, adjust=False).mean().iloc[-1]),
-                "ema_21": float(data["indicators_df"]["close"].ewm(span=21, adjust=False).mean().iloc[-1]),
-                "rsi_14": float(latest.get("rsi", 50)),
-                "bb_upper": float(latest.get("bb_upper", current_price * 1.02)),
-                "bb_lower": float(latest.get("bb_lower", current_price * 0.98)),
-                "bb_middle": float(latest.get("bb_middle", current_price)),
-                "atr": float(latest.get("atr", current_price * 0.01)),
-                "adx": 0,
-                "highest_20": float(data["indicators_df"]["high"].rolling(20).max().iloc[-1]) if len(data["indicators_df"]) >= 20 else current_price,
-                "lowest_20": float(data["indicators_df"]["low"].rolling(20).min().iloc[-1]) if len(data["indicators_df"]) >= 20 else current_price,
-                "volume_sma": float(data["indicators_df"]["volume"].rolling(20).mean().iloc[-1]) if len(data["indicators_df"]) >= 20 else 0,
-            }
-            engine_signal = self.strategy_engine.get_signal(candles, engine_indicators, current_price)
+        if self.strategy_engine.active_strategy_name != prev_strategy and prev_strategy is not None:
+            await self.alert_manager.send_custom_alert(
+                title="Strategy Switch",
+                message=(
+                    f"Regime: {self.strategy_engine.current_regime.value if self.strategy_engine.current_regime else 'N/A'}\n"
+                    f"{prev_strategy} -> {self.strategy_engine.active_strategy_name}"
+                ),
+                level=AlertLevel.INFO,
+            )
 
-            # Alert on strategy switch
-            if self.strategy_engine.active_strategy_name != prev_strategy and prev_strategy is not None:
-                await self.alert_manager.send_custom_alert(
-                    title="Strategy Switch",
-                    message=(
-                        f"Regime: {self.strategy_engine.current_regime.value if self.strategy_engine.current_regime else 'N/A'}\n"
-                        f"{prev_strategy} -> {self.strategy_engine.active_strategy_name}"
-                    ),
-                    level=AlertLevel.INFO,
-                )
+        if engine_signal:
+            logger.info(
+                f"Engine signal: {engine_signal.get('side', 'N/A')} from "
+                f"{engine_signal.get('strategy', 'N/A')} "
+                f"(regime={engine_signal.get('regime', 'N/A')})"
+            )
 
-            if engine_signal:
-                logger.info(
-                    f"Engine signal: {engine_signal.get('side', 'N/A')} from "
-                    f"{engine_signal.get('strategy', 'N/A')} "
-                    f"(regime={engine_signal.get('regime', 'N/A')})"
-                )
-
-        # Check stop-loss / take-profit for tracked positions
+    async def _check_stop_loss(self, current_price: float):
+        """Check stop-loss / take-profit for tracked positions."""
         sl_result = self.stop_loss_manager.check_position(self.symbol, current_price)
-        if sl_result["action"] in ("stop_loss", "take_profit"):
-            logger.warning(
-                f"{'🛑 Stop-loss' if sl_result['action'] == 'stop_loss' else '🎯 Take-profit'} "
-                f"triggered @ ${current_price:,.2f}, PnL: ${sl_result['pnl']:,.2f}"
-            )
-            self.risk_limits.record_trade(sl_result["pnl"], {
-                "symbol": self.symbol,
-                "side": "sell",
-                "price": current_price,
-                "reason": sl_result["action"],
-            })
-            self.stop_loss_manager.remove_position(self.symbol)
+        if sl_result["action"] not in ("stop_loss", "take_profit"):
+            return
 
-            await self.alert_manager.send_trade_alert(
-                symbol=self.symbol,
-                side="sell",
-                price=current_price,
-                amount=sl_result["position"].amount,
-                pnl=sl_result["pnl"],
-            )
+        logger.warning(
+            f"{'🛑 Stop-loss' if sl_result['action'] == 'stop_loss' else '🎯 Take-profit'} "
+            f"triggered @ ${current_price:,.2f}, PnL: ${sl_result['pnl']:,.2f}"
+        )
+        self.risk_limits.record_trade(sl_result["pnl"], {
+            "symbol": self.symbol,
+            "side": "sell",
+            "price": current_price,
+            "reason": sl_result["action"],
+        })
+        self.stop_loss_manager.remove_position(self.symbol)
 
+        await self.alert_manager.send_trade_alert(
+            symbol=self.symbol,
+            side="sell",
+            price=current_price,
+            amount=sl_result["position"].amount,
+            pnl=sl_result["pnl"],
+        )
+
+    async def _process_signals(self, data: dict, current_price: float):
+        """Calculate and execute grid trading signals."""
         signals = self.strategy.calculate_signals(
             data["indicators_df"],
             current_price,
@@ -627,71 +649,64 @@ class TradingBot:
 
         for signal in signals:
             trade = self.strategy.execute_paper_trade(signal)
-            if trade["status"] == "filled":
-                # Calculate PnL for closing trades
-                pnl = 0.0
-                if signal.type == SignalType.SELL and hasattr(self.strategy, 'long_entry_price'):
-                    if signal.amount > 0 and self.strategy.long_entry_price > 0:
-                        pnl = (signal.price - self.strategy.long_entry_price) * signal.amount
-                elif signal.type == SignalType.BUY and signal.amount < 0:
-                    if hasattr(self.strategy, 'short_entry_price') and self.strategy.short_entry_price > 0:
-                        pnl = (self.strategy.short_entry_price - signal.price) * abs(signal.amount)
-                
-                # Record trade in risk metrics
-                self.risk_limits.record_trade(pnl, {
-                    "symbol": self.symbol,
-                    "side": signal.type.value,
-                    "price": signal.price,
-                    "amount": signal.amount,
-                })
-                
-                # Record trade in rules engine
-                self.rules_engine.record_trade(pnl)
+            if trade["status"] != "filled":
+                continue
 
-                # Record in Prometheus metrics
-                self.trading_metrics.record_trade(signal.type.value, self.symbol)
-                self.trading_metrics.set_pnl(pnl)
-                
-                # Update equity curve
-                paper_status = self.strategy.get_status().get("paper_trading", {})
-                total_value = paper_status.get("total_value", settings.paper_initial_balance)
-                self.risk_limits.update_balance(total_value)
-                self.risk_metrics.update_equity(total_value)
+            pnl = self._calculate_signal_pnl(signal)
 
-                # Update rules engine PnL
-                self.rules_engine.set_pnl(total_value - settings.paper_initial_balance)
-                
-                logger.info(
-                    f"⚡ {signal.type.value.upper()} "
-                    f"{signal.amount:.6f} @ ${signal.price:,.2f}"
-                )
-                
-                # Track position in StopLossManager
-                if signal.type == SignalType.BUY:
-                    self.stop_loss_manager.add_position(
-                        symbol=self.symbol,
-                        entry_price=signal.price,
-                        amount=signal.amount,
-                        is_long=True,
-                    )
+            self.risk_limits.record_trade(pnl, {
+                "symbol": self.symbol,
+                "side": signal.type.value,
+                "price": signal.price,
+                "amount": signal.amount,
+            })
+            self.rules_engine.record_trade(pnl)
+            self.trading_metrics.record_trade(signal.type.value, self.symbol)
+            self.trading_metrics.set_pnl(pnl)
 
-                # Send trade alert
-                await self.alert_manager.send_trade_alert(
+            paper_status = self.strategy.get_status().get("paper_trading", {})
+            total_value = paper_status.get("total_value", settings.paper_initial_balance)
+            self.risk_limits.update_balance(total_value)
+            self.risk_metrics.update_equity(total_value)
+            self.rules_engine.set_pnl(total_value - settings.paper_initial_balance)
+
+            logger.info(
+                f"⚡ {signal.type.value.upper()} "
+                f"{signal.amount:.6f} @ ${signal.price:,.2f}"
+            )
+
+            if signal.type == SignalType.BUY:
+                self.stop_loss_manager.add_position(
                     symbol=self.symbol,
-                    side=signal.type.value,
-                    price=signal.price,
+                    entry_price=signal.price,
                     amount=signal.amount,
-                    pnl=pnl if pnl != 0 else None,
+                    is_long=True,
                 )
+
+            await self.alert_manager.send_trade_alert(
+                symbol=self.symbol,
+                side=signal.type.value,
+                price=signal.price,
+                amount=signal.amount,
+                pnl=pnl if pnl != 0 else None,
+            )
+
+    def _calculate_signal_pnl(self, signal) -> float:
+        """Calculate PnL for a closing trade signal."""
+        if signal.type == SignalType.SELL and hasattr(self.strategy, 'long_entry_price'):
+            if signal.amount > 0 and self.strategy.long_entry_price > 0:
+                return (signal.price - self.strategy.long_entry_price) * signal.amount
+        elif signal.type == SignalType.BUY and signal.amount < 0:
+            if hasattr(self.strategy, 'short_entry_price') and self.strategy.short_entry_price > 0:
+                return (self.strategy.short_entry_price - signal.price) * abs(signal.amount)
+        return 0.0
     
     async def _maybe_ai_review(self, current_price: float):
         """Run AI review if interval has passed."""
         if not self.config.ai_periodic_review:
             return
         
-        if self.last_review is None:
-            pass  # First review: trigger immediately
-        else:
+        if self.last_review is not None:
             interval = timedelta(minutes=self.config.review_interval_minutes)
             if datetime.now(timezone.utc) - self.last_review < interval:
                 return
@@ -858,35 +873,10 @@ class TradingBot:
             uptime = None
             if self.start_time:
                 uptime = (datetime.now(timezone.utc) - self.start_time).total_seconds()
-            
-            # Get grid levels
-            grid_levels = []
-            center_price = None
-            if self.strategy:
-                center_price = self.strategy.center_price
-                for level in self.strategy.levels:
-                    grid_levels.append({
-                        "price": level.price,
-                        "side": level.side.value,
-                        "amount": level.amount,
-                        "filled": level.filled,
-                        "order_id": level.order_id,
-                    })
-            
-            # Get paper trading stats
-            _ib = settings.paper_initial_balance
-            paper_balance = _ib
-            paper_holdings = 0.0
-            paper_total = _ib
-            paper_trades = 0
-            if self.strategy:
-                status = self.strategy.get_status()
-                paper = status.get("paper_trading", {})
-                paper_balance = paper.get("balance_usdt", _ib)
-                paper_holdings = paper.get("holdings_btc", 0.0)
-                paper_total = paper.get("total_value", _ib)
-                paper_trades = paper.get("trades_count", 0)
-            
+
+            grid_levels, center_price = self._collect_grid_levels()
+            paper_balance, paper_holdings, paper_total, paper_trades = self._collect_paper_stats()
+
             state = SharedBotState(
                 status="running" if self.running else "stopped",
                 state=self.state.value,
@@ -903,13 +893,38 @@ class TradingBot:
                 paper_total_value=paper_total,
                 paper_trades_count=paper_trades,
             )
-            
-            # Add engine status before writing
-            engine_status = self.strategy_engine.get_status()
-            state.strategy_engine = engine_status
+            state.strategy_engine = self.strategy_engine.get_status()
             write_state(state)
         except Exception as e:
             logger.debug(f"Failed to write shared state: {e}")
+
+    def _collect_grid_levels(self) -> tuple[list, Optional[float]]:
+        """Collect grid levels for state export."""
+        if not self.strategy:
+            return [], None
+        return [
+            {
+                "price": level.price,
+                "side": level.side.value,
+                "amount": level.amount,
+                "filled": level.filled,
+                "order_id": level.order_id,
+            }
+            for level in self.strategy.levels
+        ], self.strategy.center_price
+
+    def _collect_paper_stats(self) -> tuple[float, float, float, int]:
+        """Collect paper trading stats for state export."""
+        _ib = settings.paper_initial_balance
+        if not self.strategy:
+            return _ib, 0.0, _ib, 0
+        paper = self.strategy.get_status().get("paper_trading", {})
+        return (
+            paper.get("balance_usdt", _ib),
+            paper.get("holdings_btc", 0.0),
+            paper.get("total_value", _ib),
+            paper.get("trades_count", 0),
+        )
 
 
     async def _handle_emergency_stop(self):

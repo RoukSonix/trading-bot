@@ -6,6 +6,8 @@ from enum import Enum
 from typing import List, Optional
 from loguru import logger
 
+from shared.constants import RISK_WARNING_THRESHOLD
+
 
 class LimitStatus(Enum):
     """Status of risk limits."""
@@ -68,7 +70,7 @@ class RiskLimits:
     max_drawdown_limit: float = 0.10     # 10% max drawdown
     max_consecutive_losses: int = 5       # Max losing streak
     max_trades_per_day: int = 50          # Max trades per day
-    warning_threshold: float = 0.7        # Warn at 70% of limit
+    warning_threshold: float = RISK_WARNING_THRESHOLD
     
     # State
     initial_balance: float = 0.0
