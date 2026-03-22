@@ -23,8 +23,13 @@ try:
 except ImportError:
     from ai_fallback import AIFallback
 
-# AI call timeout in seconds
-AI_TIMEOUT = 60
+try:
+    from shared.constants import LLM_TIMEOUT_SEC
+except ImportError:
+    LLM_TIMEOUT_SEC = 90
+
+# AI call timeout — use the shared constant so all bots agree on the value
+AI_TIMEOUT = LLM_TIMEOUT_SEC
 
 
 class AIMixin:
