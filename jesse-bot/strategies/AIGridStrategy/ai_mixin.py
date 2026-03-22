@@ -24,7 +24,7 @@ except ImportError:
     from ai_fallback import AIFallback
 
 # AI call timeout in seconds
-AI_TIMEOUT = 30
+AI_TIMEOUT = 60
 
 
 class AIMixin:

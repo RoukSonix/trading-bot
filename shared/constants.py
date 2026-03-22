@@ -57,7 +57,7 @@ ATR_STOP_MULTIPLIER = 2.0
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 1.0
 RETRY_BACKOFF_BASE = 2
-LLM_TIMEOUT_SEC = 30
+LLM_TIMEOUT_SEC = 60
 
 # ── Order Book / Data ──────────────────────────────────────────────────────
 

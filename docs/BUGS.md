@@ -15,7 +15,7 @@
 ### BUG-002: No LLM timeout — DONE
 **File:** `shared/ai/agent.py`
 **Problem:** `_call_llm()` has no timeout. If OpenRouter is slow/down, entire bot loop blocks indefinitely.
-**Fix:** Added `timeout=30` to ChatOpenAI constructor and `asyncio.wait_for(timeout=30)` in `_call_llm()`.
+**Fix:** Added `timeout=60` to ChatOpenAI constructor and `asyncio.wait_for(timeout=60)` in `_call_llm()`.
 
 ### BUG-003: No SMTP timeout — DONE (already fixed)
 **File:** `shared/alerts/email.py`
