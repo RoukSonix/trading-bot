@@ -2,7 +2,29 @@
 
 **Branch:** `hotfix-ai-timeout-resilience`
 **Date:** 2026-03-22
-**Step:** 1 — Planning
+**Step:** 1 — Planning (Validated)
+
+### VALIDATION NOTE (2026-03-22)
+
+All file/line targets verified against source. Every reference is accurate:
+
+- `shared/constants.py:60` — `LLM_TIMEOUT_SEC = 60` ✓
+- `shared/ai/agent.py:22` import, `:97` constructor timeout, `:124` wait_for, `:128` error log ✓
+- `jesse-bot/ai_mixin.py:27` — `AI_TIMEOUT = 60` ✓, `:270` `_run_ai_with_timeout` uses it ✓
+- `bot.py:704-762` — `_maybe_ai_review` structure matches plan exactly ✓
+- `bot.py:528` — main loop catch-all increments errors, sends alert, sleeps 2x ✓
+- `bot.py:297-300` — startup try/except confirmed ✓
+- `bot.py:542-549` — `_maybe_check_entry` confirmed ✓
+- `ai_grid.py:298-307` — already has try/except, returns CONTINUE on error ✓
+- `ai_grid.py:300-301` — `Reason:` log line confirmed ✓
+- `ai_grid.py:461` — REASON: line parsing confirmed ✓
+- `jesse-bot/__init__.py:414-466` — `_run_ai_analysis` try/except ✓
+- `jesse-bot/__init__.py:468-509` — `_run_ai_position_review` try/except ✓
+- `jesse-bot/ai_mixin.py:57-137` — all three public methods catch Exception ✓
+- `jesse-bot/tests/test_integration.py:345,361` — timeout/error tests exist ✓
+- `tests/unit/test_bug_fixes.py` — TestBug002LLMTimeout exists, ready for extension ✓
+
+No corrections needed. Plan is ready for implementation.
 
 ---
 
