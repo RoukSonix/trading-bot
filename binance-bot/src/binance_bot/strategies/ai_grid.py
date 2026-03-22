@@ -298,7 +298,8 @@ class AIGridStrategy(GridStrategy):
         try:
             result = await self._execute_review(prompt)
             logger.info(f"📋 AI Review: {result['action']} (Risk: {result['risk']})")
-            logger.info(f"   Reason: {result['reason']}")
+            if result.get("reason"):
+                logger.info(f"   Reason: {result['reason']}")
 
             self._apply_review(result, current_price)
             return result

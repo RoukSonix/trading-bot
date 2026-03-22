@@ -1,5 +1,6 @@
-"""Tests for BUGS.md fixes (BUG-001 through BUG-010)."""
+"""Tests for BUGS.md fixes (BUG-001 through BUG-010) and timeout resilience."""
 
+import asyncio
 import json
 import os
 
@@ -7,7 +8,8 @@ os.environ.setdefault("BINANCE_API_KEY", "test_api_key")
 os.environ.setdefault("BINANCE_SECRET_KEY", "test_secret_key")
 
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker
 
@@ -82,6 +84,26 @@ class TestBug002LLMTimeout:
         source = insp.getsource(TradingAgent._call_llm)
         assert "wait_for" in source
         assert "timeout" in source
+
+    def test_timeout_is_90_seconds(self):
+        """Verify LLM_TIMEOUT_SEC was raised to 90s."""
+        from shared.constants import LLM_TIMEOUT_SEC
+        assert LLM_TIMEOUT_SEC == 90
+
+    def test_jesse_ai_timeout_matches_constant(self):
+        """Verify jesse-bot AI_TIMEOUT uses the shared constant."""
+        import sys, os
+        # Add jesse-bot strategy path for direct import
+        jesse_path = os.path.join(
+            os.path.dirname(__file__), '..', '..', 'jesse-bot', 'strategies', 'AIGridStrategy',
+        )
+        sys.path.insert(0, jesse_path)
+        try:
+            from ai_mixin import AI_TIMEOUT
+            from shared.constants import LLM_TIMEOUT_SEC
+            assert AI_TIMEOUT == LLM_TIMEOUT_SEC
+        finally:
+            sys.path.remove(jesse_path)
 
 
 # ---------------------------------------------------------------------------
@@ -380,3 +402,74 @@ class TestBug010ConfigurableRisk:
         assert "settings.risk_per_trade" in source
         assert "settings.risk_daily_loss_limit" in source
         assert "settings.risk_max_drawdown_limit" in source
+
+
+# ---------------------------------------------------------------------------
+# AI timeout resilience
+# ---------------------------------------------------------------------------
+
+class TestAITimeoutResilience:
+    """Test that periodic AI review handles timeout/errors gracefully."""
+
+    @pytest.fixture
+    def bot(self):
+        """Create a TradingBot with mocked internals."""
+        from binance_bot.bot import TradingBot, BotState
+        from binance_bot.strategies.ai_grid import AIGridConfig
+
+        with patch("binance_bot.bot.exchange_client"), \
+             patch("binance_bot.bot.get_alert_manager") as mock_am, \
+             patch("binance_bot.bot.get_rules_engine"):
+            mock_am.return_value = MagicMock(
+                send_status_alert=AsyncMock(),
+                send_error_alert=AsyncMock(),
+                send_custom_alert=AsyncMock(),
+            )
+            bot = TradingBot(symbol="BTC/USDT")
+            bot.state = BotState.TRADING
+            bot.strategy = MagicMock()
+            bot.strategy.paper_holdings = 0.0
+            bot.last_review = datetime.now(timezone.utc) - timedelta(hours=1)
+            return bot
+
+    @pytest.mark.asyncio
+    async def test_maybe_ai_review_timeout_updates_timestamp(self, bot):
+        """Timeout during periodic review must update last_review (no retry-spam)."""
+        bot.strategy.periodic_review = AsyncMock(
+            side_effect=asyncio.TimeoutError("LLM timed out"),
+        )
+        old_review = bot.last_review
+
+        with patch.object(bot, "_fetch_market_data", new_callable=AsyncMock) as mock_data:
+            mock_data.return_value = {"indicators": {}}
+            await bot._maybe_ai_review(current_price=100_000.0)
+
+        # Timestamp must have advanced — prevents retry on next tick
+        assert bot.last_review > old_review
+        # State must be unchanged (no poisoning)
+        from binance_bot.bot import BotState
+        assert bot.state == BotState.TRADING
+
+    @pytest.mark.asyncio
+    async def test_maybe_ai_review_generic_error_is_graceful(self, bot):
+        """Generic error in review is swallowed; loop continues."""
+        with patch.object(bot, "_fetch_market_data", new_callable=AsyncMock) as mock_data:
+            mock_data.side_effect = RuntimeError("exchange unreachable")
+            await bot._maybe_ai_review(current_price=100_000.0)
+
+        from binance_bot.bot import BotState
+        assert bot.state == BotState.TRADING
+        assert bot.last_review is not None
+
+    @pytest.mark.asyncio
+    async def test_maybe_ai_review_success_still_works(self, bot):
+        """Happy path: review returns CONTINUE, state unchanged."""
+        bot.strategy.periodic_review = AsyncMock(
+            return_value={"action": "CONTINUE", "reason": "all good"},
+        )
+        with patch.object(bot, "_fetch_market_data", new_callable=AsyncMock) as mock_data:
+            mock_data.return_value = {"indicators": {}}
+            await bot._maybe_ai_review(current_price=100_000.0)
+
+        from binance_bot.bot import BotState
+        assert bot.state == BotState.TRADING

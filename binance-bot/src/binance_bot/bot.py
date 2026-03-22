@@ -702,64 +702,77 @@ class TradingBot:
         return 0.0
     
     async def _maybe_ai_review(self, current_price: float):
-        """Run AI review if interval has passed."""
+        """Run AI review if interval has passed.
+
+        Timeout or failure is logged and skipped — the trading loop
+        continues without state changes.
+        """
         if not self.config.ai_periodic_review:
             return
-        
+
         if self.last_review is not None:
             interval = timedelta(minutes=self.config.review_interval_minutes)
             if datetime.now(timezone.utc) - self.last_review < interval:
                 return
-        
-        data = await self._fetch_market_data()
-        
-        review = await self.strategy.periodic_review(
-            current_price=current_price,
-            indicators=data["indicators"],
-            position_value=self.strategy.paper_holdings * current_price,
-            unrealized_pnl=0,
-        )
-        
+
+        try:
+            data = await self._fetch_market_data()
+
+            review = await self.strategy.periodic_review(
+                current_price=current_price,
+                indicators=data["indicators"],
+                position_value=self.strategy.paper_holdings * current_price,
+                unrealized_pnl=0,
+            )
+        except Exception as e:
+            # Graceful: log, update timestamp to avoid retry-spam, continue
+            logger.warning(f"Periodic AI review failed (skipping): {e}")
+            self.last_review = datetime.now(timezone.utc)
+            return
+
         self.last_review = datetime.now(timezone.utc)
-        
+
         # Handle AI decision
-        if review["action"] == "STOP":
-            logger.warning(f"🛑 AI says STOP: {review['reason']}")
+        action = review.get("action", "CONTINUE")
+        reason = review.get("reason") or "no reason provided"
+
+        if action == "STOP":
+            logger.warning(f"🛑 AI says STOP: {reason}")
             self.state = BotState.WAITING
-            
+
             await self.alert_manager.send_status_alert(
                 status="stopped",
                 symbol=self.symbol,
                 current_price=current_price,
-                reason=f"AI decision: {review['reason']}",
+                reason=f"AI decision: {reason}",
             )
-            
-        elif review["action"] == "PAUSE":
-            logger.warning(f"⏸️ AI says PAUSE: {review['reason']}")
+
+        elif action == "PAUSE":
+            logger.warning(f"⏸️ AI says PAUSE: {reason}")
             self.state = BotState.PAUSED
-            
+
             await self.alert_manager.send_status_alert(
                 status="paused",
                 symbol=self.symbol,
                 current_price=current_price,
-                reason=f"AI decision: {review['reason']}",
+                reason=f"AI decision: {reason}",
             )
-            
-        elif review["action"] in ("CONTINUE", "HOLD"):
+
+        elif action in ("CONTINUE", "HOLD"):
             # If we were paused by AI, resume trading
             if self.state == BotState.PAUSED:
-                logger.info(f"▶️ AI says {review['action']}: resuming from PAUSE")
+                logger.info(f"▶️ AI says {action}: resuming from PAUSE")
                 self.state = BotState.TRADING
-                
+
                 await self.alert_manager.send_status_alert(
                     status="trading",
                     symbol=self.symbol,
                     current_price=current_price,
-                    reason=f"AI resumed: {review['reason']}",
+                    reason=f"AI resumed: {reason}",
                 )
-            
-        elif review["action"] == "ADJUST":
-            logger.info(f"🔧 AI adjusted grid: {review['reason']}")
+
+        elif action == "ADJUST":
+            logger.info(f"🔧 AI adjusted grid: {reason}")
 
     async def _maybe_fetch_news(self):
         """Fetch news and update sentiment context periodically (~15 min)."""
