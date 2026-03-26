@@ -158,6 +158,7 @@ class DiscordAlert:
             {"name": "Side", "value": f"{'🟢' if is_buy else '🔴'} {side_label}", "inline": True},
             {"name": "Price", "value": f"${price:,.2f}", "inline": True},
             {"name": "Amount", "value": f"{amount:.6f}", "inline": True},
+            {"name": "Value", "value": f"💰 ${price * amount:,.2f}", "inline": True},
         ]
 
         if direction:
@@ -294,44 +295,64 @@ class DiscordAlert:
         best_trade: Optional[float] = None,
         worst_trade: Optional[float] = None,
         trades_list: Optional[list] = None,
+        current_balance: Optional[float] = None,
+        today_pnl: Optional[float] = None,
     ) -> bool:
         """Send daily trading summary.
-        
+
         Args:
             symbol: Trading pair
-            start_balance: Balance at start of day
+            start_balance: Initial balance (lifetime reference)
             end_balance: Balance at end of day
             total_trades: Number of trades
             winning_trades: Number of winning trades
             losing_trades: Number of losing trades
-            total_pnl: Total PnL for the day
+            total_pnl: Lifetime PnL
             max_drawdown: Maximum drawdown percentage
             best_trade: Best trade PnL
             worst_trade: Worst trade PnL
-            
+            trades_list: List of trades
+            current_balance: Current portfolio value
+            today_pnl: Today-only profit/loss
+
         Returns:
             True if sent successfully
         """
         pnl_pct = ((end_balance - start_balance) / start_balance) * 100 if start_balance > 0 else 0
         win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
-        
+
         color = self.COLOR_PROFIT if total_pnl >= 0 else self.COLOR_LOSS
-        
+
         fields = [
             {"name": "Symbol", "value": symbol, "inline": True},
             {"name": "Total Trades", "value": str(total_trades), "inline": True},
             {"name": "Win Rate", "value": f"{win_rate:.1f}%", "inline": True},
-            {"name": "Start Balance", "value": f"${start_balance:,.2f}", "inline": True},
+        ]
+
+        if current_balance is not None:
+            fields.append({"name": "💰 Current Balance", "value": f"${current_balance:,.2f}", "inline": True})
+
+        if today_pnl is not None:
+            today_emoji = "📈" if today_pnl >= 0 else "📉"
+            today_pnl_text = f"{today_emoji} ${today_pnl:+,.2f}"
+            starting = current_balance - today_pnl if current_balance is not None else 0
+            if starting > 0:
+                today_pct = (today_pnl / starting) * 100
+                today_pnl_text += f" ({today_pct:+.2f}%)"
+            fields.append({"name": "Today PnL", "value": today_pnl_text, "inline": True})
+
+        fields.extend([
+            {"name": "Initial Balance", "value": f"${start_balance:,.2f}", "inline": True},
             {"name": "End Balance", "value": f"${end_balance:,.2f}", "inline": True},
-            {"name": "Daily PnL", "value": f"${total_pnl:+,.2f} ({pnl_pct:+.2f}%)", "inline": True},
+            {"name": "Lifetime PnL", "value": f"${total_pnl:+,.2f} ({pnl_pct:+.2f}%)", "inline": True},
             {"name": "Winning", "value": f"🟢 {winning_trades}", "inline": True},
             {"name": "Losing", "value": f"🔴 {losing_trades}", "inline": True},
             {"name": "Max Drawdown", "value": f"{max_drawdown:.2f}%", "inline": True},
-        ]
-        
+        ])
+
         if best_trade is not None:
             fields.append({"name": "Best Trade", "value": f"${best_trade:+,.2f}", "inline": True})
-        
+
         if worst_trade is not None:
             fields.append({"name": "Worst Trade", "value": f"${worst_trade:+,.2f}", "inline": True})
 

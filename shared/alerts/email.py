@@ -112,6 +112,8 @@ class EmailAlert:
         total_pnl: float,
         max_drawdown: float,
         trades_list: Optional[list] = None,
+        current_balance: Optional[float] = None,
+        today_pnl: Optional[float] = None,
     ) -> bool:
         """Send daily HTML report.
         
@@ -133,6 +135,28 @@ class EmailAlert:
         win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
         pnl_color = "#00AA00" if total_pnl >= 0 else "#FF0000"
         
+        # Build optional today PnL section for email
+        today_pnl_html = ""
+        if current_balance is not None or today_pnl is not None:
+            today_pnl_html = ""
+            if current_balance is not None:
+                today_pnl_html += f"""
+            <div class="stat-box">
+                <div class="stat-label">Current Balance</div>
+                <div class="stat-value">${current_balance:,.2f}</div>
+            </div>"""
+            if today_pnl is not None:
+                today_pnl_color = "#00AA00" if today_pnl >= 0 else "#FF0000"
+                today_pnl_pct_text = ""
+                starting = (current_balance - today_pnl) if current_balance is not None else 0
+                if starting > 0:
+                    today_pnl_pct_text = f" ({today_pnl / starting * 100:+.2f}%)"
+                today_pnl_html += f"""
+            <div class="stat-box">
+                <div class="stat-label">Today PnL</div>
+                <div class="stat-value" style="color: {today_pnl_color}">${today_pnl:+,.2f}{today_pnl_pct_text}</div>
+            </div>"""
+
         html = f"""
 <!DOCTYPE html>
 <html>
@@ -159,10 +183,10 @@ class EmailAlert:
         <h1>📊 Daily Trading Report</h1>
         <p><strong>Date:</strong> {datetime.now(timezone.utc).strftime('%Y-%m-%d')}</p>
         <p><strong>Symbol:</strong> {symbol}</p>
-        
-        <div class="stat-grid">
+
+        <div class="stat-grid">{today_pnl_html}
             <div class="stat-box">
-                <div class="stat-label">Start Balance</div>
+                <div class="stat-label">Initial Balance</div>
                 <div class="stat-value">${start_balance:,.2f}</div>
             </div>
             <div class="stat-box">
@@ -170,7 +194,7 @@ class EmailAlert:
                 <div class="stat-value">${end_balance:,.2f}</div>
             </div>
             <div class="stat-box">
-                <div class="stat-label">Daily PnL</div>
+                <div class="stat-label">Lifetime PnL</div>
                 <div class="stat-value pnl">${total_pnl:+,.2f} ({pnl_pct:+.2f}%)</div>
             </div>
             <div class="stat-box">

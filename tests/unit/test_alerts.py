@@ -208,6 +208,161 @@ class TestAlertConfig:
         assert config.rate_limit_per_minute == 20
 
 
+class TestTradeAlertValueField:
+    """Tests for trade alert Value field (price * amount)."""
+
+    @pytest.mark.asyncio
+    async def test_trade_alert_value_field(self):
+        """Verify send_trade_alert embed includes Value field with price * amount."""
+        alert = DiscordAlert(webhook_url="https://fake.webhook.url/test")
+
+        with patch.object(alert, "_get_session") as mock_get_session:
+            mock_resp = AsyncMock()
+            mock_resp.status = 204
+            mock_session = AsyncMock()
+            mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_session.post.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_get_session.return_value = mock_session
+
+            await alert.send_trade_alert(
+                symbol="BTC/USDT", side="buy", price=67500.0, amount=0.001,
+            )
+
+            call_args = mock_session.post.call_args
+            payload = call_args.kwargs.get("json", call_args[1].get("json", {}))
+            fields = payload["embeds"][0]["fields"]
+            value_fields = [f for f in fields if f["name"] == "Value"]
+            assert len(value_fields) == 1
+            assert "$67.50" in value_fields[0]["value"]
+
+    @pytest.mark.asyncio
+    async def test_trade_alert_value_zero_amount(self):
+        """Edge case: amount=0 should show $0.00 value."""
+        alert = DiscordAlert(webhook_url="https://fake.webhook.url/test")
+
+        with patch.object(alert, "_get_session") as mock_get_session:
+            mock_resp = AsyncMock()
+            mock_resp.status = 204
+            mock_session = AsyncMock()
+            mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_session.post.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_get_session.return_value = mock_session
+
+            await alert.send_trade_alert(
+                symbol="BTC/USDT", side="buy", price=50000.0, amount=0.0,
+            )
+
+            call_args = mock_session.post.call_args
+            payload = call_args.kwargs.get("json", call_args[1].get("json", {}))
+            fields = payload["embeds"][0]["fields"]
+            value_fields = [f for f in fields if f["name"] == "Value"]
+            assert len(value_fields) == 1
+            assert "$0.00" in value_fields[0]["value"]
+
+
+class TestDailySummaryNewFields:
+    """Tests for daily summary current_balance and today_pnl fields."""
+
+    @pytest.mark.asyncio
+    async def test_daily_summary_current_balance_field(self):
+        """Verify send_daily_summary embed includes Current Balance when provided."""
+        alert = DiscordAlert(webhook_url="https://fake.webhook.url/test")
+
+        with patch.object(alert, "_get_session") as mock_get_session:
+            mock_resp = AsyncMock()
+            mock_resp.status = 204
+            mock_session = AsyncMock()
+            mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_session.post.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_get_session.return_value = mock_session
+
+            await alert.send_daily_summary(
+                symbol="BTC/USDT",
+                start_balance=10000, end_balance=10350,
+                total_trades=12, winning_trades=8, losing_trades=4,
+                total_pnl=350, max_drawdown=2.1,
+                current_balance=10350.0,
+            )
+
+            call_args = mock_session.post.call_args
+            payload = call_args.kwargs.get("json", call_args[1].get("json", {}))
+            fields = payload["embeds"][0]["fields"]
+            balance_fields = [f for f in fields if "Current Balance" in f["name"]]
+            assert len(balance_fields) == 1
+            assert "$10,350.00" in balance_fields[0]["value"]
+
+    @pytest.mark.asyncio
+    async def test_daily_summary_today_pnl_field(self):
+        """Verify send_daily_summary embed includes Today PnL when provided."""
+        alert = DiscordAlert(webhook_url="https://fake.webhook.url/test")
+
+        with patch.object(alert, "_get_session") as mock_get_session:
+            mock_resp = AsyncMock()
+            mock_resp.status = 204
+            mock_session = AsyncMock()
+            mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_session.post.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_get_session.return_value = mock_session
+
+            await alert.send_daily_summary(
+                symbol="BTC/USDT",
+                start_balance=10000, end_balance=10350,
+                total_trades=12, winning_trades=8, losing_trades=4,
+                total_pnl=350, max_drawdown=2.1,
+                current_balance=10350.0, today_pnl=150.0,
+            )
+
+            call_args = mock_session.post.call_args
+            payload = call_args.kwargs.get("json", call_args[1].get("json", {}))
+            fields = payload["embeds"][0]["fields"]
+            today_fields = [f for f in fields if f["name"] == "Today PnL"]
+            assert len(today_fields) == 1
+            assert "$+150.00" in today_fields[0]["value"]
+            assert "+1.47%" in today_fields[0]["value"]
+
+    @pytest.mark.asyncio
+    async def test_daily_summary_today_pnl_percentage(self):
+        """Verify percentage calculation handles zero starting balance."""
+        alert = DiscordAlert(webhook_url="https://fake.webhook.url/test")
+
+        with patch.object(alert, "_get_session") as mock_get_session:
+            mock_resp = AsyncMock()
+            mock_resp.status = 204
+            mock_session = AsyncMock()
+            mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_session.post.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_get_session.return_value = mock_session
+
+            # today_pnl == current_balance means starting was 0 — no percentage
+            await alert.send_daily_summary(
+                symbol="BTC/USDT",
+                start_balance=0, end_balance=100,
+                total_trades=1, winning_trades=1, losing_trades=0,
+                total_pnl=100, max_drawdown=0,
+                current_balance=100.0, today_pnl=100.0,
+            )
+
+            call_args = mock_session.post.call_args
+            payload = call_args.kwargs.get("json", call_args[1].get("json", {}))
+            fields = payload["embeds"][0]["fields"]
+            today_fields = [f for f in fields if f["name"] == "Today PnL"]
+            assert len(today_fields) == 1
+            # starting_balance = 100 - 100 = 0 → no percentage
+            assert "%" not in today_fields[0]["value"]
+
+    @pytest.mark.asyncio
+    async def test_daily_summary_backward_compat(self):
+        """Verify send_daily_summary works without new optional params."""
+        alert = DiscordAlert(webhook_url="")
+        result = await alert.send_daily_summary(
+            symbol="BTC/USDT",
+            start_balance=10000, end_balance=10100,
+            total_trades=5, winning_trades=3, losing_trades=2,
+            total_pnl=100, max_drawdown=1.5,
+        )
+        assert result is False  # Disabled, but should not error
+
+
 class TestAlertManager:
     """Tests for AlertManager."""
 
