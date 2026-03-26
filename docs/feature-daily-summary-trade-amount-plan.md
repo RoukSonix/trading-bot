@@ -2,7 +2,8 @@
 
 **Branch:** `feature/feature-daily-summary-trade-amount`
 **Date:** 2026-03-26
-**Status:** PLANNING
+**Status:** APPROVED
+**Validated:** 2026-03-26
 
 ---
 
@@ -66,8 +67,12 @@ if current_balance is not None:
 if today_pnl is not None:
     today_emoji = "📈" if today_pnl >= 0 else "📉"
     today_pnl_text = f"{today_emoji} ${today_pnl:+,.2f}"
-    if current_balance and current_balance > abs(today_pnl):
-        today_pct = (today_pnl / (current_balance - today_pnl)) * 100
+    # VALIDATION NOTE: Use starting_balance (= current_balance - today_pnl) for percentage.
+    # Original guard `current_balance > abs(today_pnl)` was too restrictive —
+    # it hid percentage for losses exceeding half the starting balance.
+    starting = current_balance - today_pnl if current_balance is not None else 0
+    if starting > 0:
+        today_pct = (today_pnl / starting) * 100
         today_pnl_text += f" ({today_pct:+.2f}%)"
     fields.append({"name": "Today PnL", "value": today_pnl_text, "inline": True})
 ```
@@ -83,6 +88,12 @@ if today_pnl is not None:
 - Add `today_pnl: Optional[float] = None` parameter.
 - Pass both through to `self.discord.send_daily_summary()`.
 - Pass both through to `self.email.send_daily_report()` (email body text).
+
+> **VALIDATION NOTE:** `email.send_daily_report()` (`shared/alerts/email.py:104`) does NOT currently
+> accept `current_balance` or `today_pnl` params. Passing them will raise `TypeError`.
+> **Fix:** Add `current_balance: Optional[float] = None` and `today_pnl: Optional[float] = None`
+> to `email.send_daily_report()` signature. The HTML template can optionally render them, or
+> simply accept and ignore them for now. This must be done in the same PR — not deferred.
 
 ### 3. `binance-bot/src/binance_bot/bot.py` — Data builder
 
@@ -190,4 +201,51 @@ else:
 - **No config changes** — no new settings required.
 - **Risk:** Minimal. Only adds new fields to Discord embeds. Existing fields unchanged (except label rename).
 - **Label rename** ("Daily PnL" → "Lifetime PnL", "Start Balance" → "Initial Balance") may affect users who grep Discord channel history — document in changelog.
-- **Email formatter** (`shared/alerts/email.py:send_daily_report`) should also receive `current_balance` and `today_pnl` but is lower priority — can be done in same PR or follow-up.
+- **Email formatter** (`shared/alerts/email.py:send_daily_report`) MUST also receive `current_balance` and `today_pnl` as optional params in this PR to avoid `TypeError` when `manager.py` passes them through. HTML rendering of these values is optional/deferred.
+
+---
+
+## Validation Report (Step 2)
+
+**Validated by:** Claude ACP (Step 2 agent)
+**Date:** 2026-03-26
+
+### File Targets — CONFIRMED
+
+| File | Method | Plan lines | Actual lines | Status |
+|---|---|---|---|---|
+| `shared/alerts/discord.py` | `send_trade_alert` fields | ~156–161 | 156–161 | ✅ |
+| `shared/alerts/discord.py` | `send_daily_summary` | ~284–349 | 284–349 | ✅ |
+| `shared/alerts/manager.py` | `send_trade_alert` | ~162–214 | 162–214 | ✅ |
+| `shared/alerts/manager.py` | `send_daily_summary` | ~309–362 | 309–362 | ✅ |
+| `binance-bot/src/binance_bot/bot.py` | `_get_daily_summary_data` | ~227–257 | 227–257 | ✅ |
+| `shared/risk/limits.py` | `DailyStats` | — | lines 20–53 | ✅ |
+| `shared/alerts/email.py` | `send_daily_report` | — | lines 104–236 | ✅ (needs param update) |
+| `tests/unit/test_alerts.py` | existing tests | — | exists, 245 lines | ✅ |
+
+### Today PnL Safety — CONFIRMED
+
+- `RiskLimits._reset_daily_stats()` (line 95) uses `current_balance` from previous day as `starting_balance` for the new day.
+- `update_balance()` (line 117) triggers daily reset when `date.today()` changes.
+- `DailyStats.starting_balance` genuinely represents "balance at start of today".
+- `today_pnl = current_balance - starting_balance` is safe and correct.
+- `self.risk_limits` is always initialized in `TradingBot.__init__` (line 119), so `hasattr` guard is defensive but harmless.
+
+### Issues Found and Fixed
+
+**Issue 1 — Today PnL percentage guard (FIXED in plan)**
+Original code: `if current_balance and current_balance > abs(today_pnl)` — too restrictive, hid percentage for losses > 50% of starting balance. Changed to: `starting = current_balance - today_pnl; if starting > 0`.
+
+**Issue 2 — Email `TypeError` (FIXED in plan)**
+Plan originally said to pass `current_balance`/`today_pnl` to `email.send_daily_report()` which does NOT accept those params. Added validation note: must add optional params to `email.send_daily_report()` in same PR.
+
+### Breaking Changes — NONE
+
+- All new parameters are `Optional[float] = None`. Existing callers unaffected.
+- Label renames ("Start Balance" → "Initial Balance", "Daily PnL" → "Lifetime PnL") are cosmetic, no functional impact.
+
+### Test Coverage — SUFFICIENT
+
+9 planned tests cover: new fields, percentage calculation, zero/edge cases, backward compat, bot data builder with and without risk_limits. No missing critical test cases identified.
+
+### Verdict: **APPROVED** — ready for Step 3 implementation.
