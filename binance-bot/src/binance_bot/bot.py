@@ -244,7 +244,16 @@ class TradingBot:
         losing_trades = len(losing_trades_raw) if isinstance(losing_trades_raw, list) else int(losing_trades_raw)
         total_pnl = end_balance - start_balance
         max_drawdown = getattr(self.risk_metrics, 'max_drawdown', 0) * 100
-        
+
+        # Today PnL from DailyStats (tracks today's starting balance)
+        today_pnl = 0.0
+        if hasattr(self, 'risk_limits') and self.risk_limits and hasattr(self.risk_limits, 'daily_stats'):
+            ds = self.risk_limits.daily_stats
+            if ds is not None:
+                today_pnl = ds.current_balance - ds.starting_balance
+        else:
+            today_pnl = end_balance - start_balance  # fallback to lifetime
+
         return {
             "symbol": self.symbol,
             "start_balance": start_balance,
@@ -254,6 +263,8 @@ class TradingBot:
             "losing_trades": losing_trades,
             "total_pnl": total_pnl,
             "max_drawdown": max_drawdown,
+            "current_balance": end_balance,
+            "today_pnl": today_pnl,
         }
     
     async def start(self):

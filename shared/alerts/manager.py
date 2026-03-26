@@ -319,13 +319,15 @@ Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
         best_trade: Optional[float] = None,
         worst_trade: Optional[float] = None,
         trades_list: Optional[list] = None,
+        current_balance: Optional[float] = None,
+        today_pnl: Optional[float] = None,
     ) -> bool:
         """Send daily summary to all channels."""
         if not self.config.alerts_enabled or not self.config.daily_summary_enabled:
             return False
-        
+
         success = False
-        
+
         if self.config.discord_enabled:
             result = await self.discord.send_daily_summary(
                 symbol=symbol,
@@ -339,9 +341,11 @@ Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
                 best_trade=best_trade,
                 worst_trade=worst_trade,
                 trades_list=trades_list,
+                current_balance=current_balance,
+                today_pnl=today_pnl,
             )
             success = success or result
-        
+
         if self.config.email_enabled:
             result = await self.email.send_daily_report(
                 symbol=symbol,
@@ -353,12 +357,14 @@ Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
                 total_pnl=total_pnl,
                 max_drawdown=max_drawdown,
                 trades_list=trades_list,
+                current_balance=current_balance,
+                today_pnl=today_pnl,
             )
             success = success or result
-        
+
         if success:
             self._record_alert("daily_summary")
-        
+
         return success
     
     async def send_custom_alert(
