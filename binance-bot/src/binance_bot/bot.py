@@ -568,6 +568,7 @@ class TradingBot:
         await self._run_strategy_engine(data, current_price)
         await self._check_stop_loss(current_price)
         await self._process_signals(data, current_price)
+        await self._dispatch_tp_sl_alerts(current_price)
 
     async def _check_risk_limits(self, current_price: float) -> bool:
         """Check if trading is allowed. Returns False if halted."""
@@ -643,12 +644,15 @@ class TradingBot:
         })
         self.stop_loss_manager.remove_position(self.symbol)
 
+        strategy_name, regime = self._get_strategy_context()
         await self.alert_manager.send_trade_alert(
             symbol=self.symbol,
             side="sell",
             price=current_price,
             amount=sl_result["position"].amount,
             pnl=sl_result["pnl"],
+            strategy_name=strategy_name,
+            regime=regime,
         )
 
     async def _process_signals(self, data: dict, current_price: float):
@@ -694,12 +698,17 @@ class TradingBot:
                     is_long=True,
                 )
 
+            strategy_name, regime = self._get_strategy_context()
+            direction = "short" if signal.amount < 0 else "long"
             await self.alert_manager.send_trade_alert(
                 symbol=self.symbol,
                 side=signal.type.value,
                 price=signal.price,
                 amount=signal.amount,
                 pnl=pnl if pnl != 0 else None,
+                direction=direction,
+                strategy_name=strategy_name,
+                regime=regime,
             )
 
     def _calculate_signal_pnl(self, signal) -> float:
@@ -711,6 +720,63 @@ class TradingBot:
             if hasattr(self.strategy, 'short_entry_price') and self.strategy.short_entry_price > 0:
                 return (self.strategy.short_entry_price - signal.price) * abs(signal.amount)
         return 0.0
+
+    def _get_strategy_context(self) -> tuple[Optional[str], Optional[str]]:
+        """Get current strategy name and regime for alert enrichment."""
+        engine_info = self.strategy_engine.get_status()
+        strategy_name = engine_info.get("active_strategy") or None
+        regime = engine_info.get("current_regime") or None
+        return strategy_name, regime
+
+    async def _dispatch_tp_sl_alerts(self, current_price: float):
+        """Drain TP/SL events from strategy and dispatch alerts."""
+        if not self.strategy or not hasattr(self.strategy, 'tp_sl_alerts'):
+            return
+
+        events = self.strategy.tp_sl_alerts
+        if not events:
+            return
+
+        for event in events:
+            level = event.get("level")
+            if level is None:
+                continue
+
+            event_type = event.get("type", "unknown")
+            pnl = event.get("pnl", 0.0)
+            exit_price = event.get("price", current_price)
+            direction = "long" if level.amount > 0 else "short"
+
+            self.risk_limits.record_trade(pnl, {
+                "symbol": self.symbol,
+                "side": "sell" if level.amount > 0 else "buy",
+                "price": exit_price,
+                "reason": event_type,
+            })
+            self.rules_engine.record_trade(pnl)
+
+            paper_status = self.strategy.get_status().get("paper_trading", {})
+            total_value = paper_status.get("total_value", settings.paper_initial_balance)
+            self.risk_limits.update_balance(total_value)
+            self.risk_metrics.update_equity(total_value)
+            self.rules_engine.set_pnl(total_value - settings.paper_initial_balance)
+
+            logger.info(
+                f"{'🎯' if event_type == 'take_profit' else '🛑'} "
+                f"{event_type.upper()} @ ${exit_price:,.2f}, PnL: ${pnl:+,.2f}"
+            )
+
+            await self.alert_manager.send_tp_sl_alert(
+                event_type=event_type,
+                symbol=self.symbol,
+                level_price=level.fill_price,
+                exit_price=exit_price,
+                pnl=pnl,
+                direction=direction,
+                break_even_price=level.stop_loss if event_type == "break_even" else None,
+            )
+
+        self.strategy.tp_sl_alerts.clear()
     
     async def _maybe_ai_review(self, current_price: float):
         """Run AI review if interval has passed.

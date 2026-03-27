@@ -111,6 +111,8 @@ class DiscordAlert:
         order_id: Optional[str] = None,
         direction: Optional[str] = None,
         net_exposure: Optional[float] = None,
+        strategy_name: Optional[str] = None,
+        regime: Optional[str] = None,
     ) -> bool:
         """Send trade notification with rich embed.
 
@@ -124,6 +126,8 @@ class DiscordAlert:
             order_id: Order ID
             direction: Trade direction - "long" or "short" (Sprint 20)
             net_exposure: Net exposure after trade (Sprint 20)
+            strategy_name: Active strategy name
+            regime: Current market regime
 
         Returns:
             True if sent successfully
@@ -174,6 +178,12 @@ class DiscordAlert:
 
         if net_exposure is not None:
             fields.append({"name": "Net Exposure", "value": f"📊 {net_exposure:.6f}", "inline": True})
+
+        if strategy_name:
+            fields.append({"name": "Strategy", "value": f"🎯 {strategy_name}", "inline": True})
+
+        if regime:
+            fields.append({"name": "Regime", "value": f"📊 {regime}", "inline": True})
 
         if order_id:
             fields.append({"name": "Order ID", "value": f"`{order_id}`", "inline": True})

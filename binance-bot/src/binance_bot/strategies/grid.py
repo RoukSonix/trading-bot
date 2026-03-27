@@ -527,7 +527,7 @@ class GridStrategy(BaseStrategy):
         events = []
 
         for level in self.levels:
-            if not level.filled or level.fill_price == 0:
+            if not level.filled or level.fill_price == 0 or level.fill_time == 0:
                 continue
             # Skip levels that have already been closed (pnl != 0 and TP/SL = 0)
             if level.take_profit == 0 and level.stop_loss == 0:

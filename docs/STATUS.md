@@ -1,6 +1,6 @@
 # Project Status
 
-**Last updated:** 2026-03-20
+**Last updated:** 2026-03-27
 
 ## Current State
 
@@ -248,6 +248,24 @@ Key changes:
 - Extracted magic numbers from 12 source files
 - Updated 2 test files to reference refactored method names
 - See `docs/SIMPLIFICATION_REPORT.md` for full metrics
+
+### Feature: Enrich Bot Messages (COMPLETED)
+**Date:** 2026-03-27
+**Branch:** `feature/feature-enrich-bot-messages`
+
+| Item | Type | File(s) | Fix |
+|------|------|---------|-----|
+| A | Bug fix | `alerts/manager.py` | `send_trade_alert()` now forwards `direction`, `net_exposure` to Discord (was silently dropped) |
+| B | Bug fix | `bot.py` | TP/SL events from `strategy.tp_sl_alerts` now dispatched via `alert_manager.send_tp_sl_alert()` with PnL recording |
+| C | Bug fix | `strategies/grid.py` | `check_tp_sl()` now guards against `fill_time == 0` (invalid level state) |
+| D | Feature | `alerts/discord.py`, `alerts/manager.py`, `bot.py` | Trade alerts enriched with `strategy_name` and `regime` fields from strategy engine |
+
+Key changes:
+- All trade alerts now show strategy name, market regime, and trade direction
+- TP/SL events (take profit, stop loss, trailing stop) now trigger Discord alerts and record PnL to risk system
+- GridLevel with fill_time==0 correctly skipped in TP/SL checks
+- 8 new tests in `tests/unit/test_alerts.py` (direction passthrough, strategy/regime fields, fill_time guard)
+- Tests: 703 (all passing, +22 from previous count)
 
 ### Known Issues
 See `docs/AUDIT_V2.md` for full list (118 items, P0-P3).

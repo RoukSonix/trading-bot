@@ -397,3 +397,182 @@ class TestAlertManager:
         assert "alerts_sent" in stats
         assert "alerts_blocked" in stats
         assert "config" in stats
+
+
+class TestTradeAlertDirectionPassthrough:
+    """Tests for direction/net_exposure passthrough via AlertManager."""
+
+    @pytest.mark.asyncio
+    async def test_manager_passes_direction_to_discord(self):
+        """AlertManager.send_trade_alert should forward direction to discord."""
+        config = AlertConfig(alerts_enabled=True, discord_enabled=True)
+        manager = AlertManager(config=config)
+        manager._discord = MagicMock()
+        manager._discord.send_trade_alert = AsyncMock(return_value=True)
+
+        await manager.send_trade_alert(
+            symbol="BTC/USDT", side="buy", price=67500, amount=0.001,
+            direction="long", net_exposure=0.005,
+        )
+
+        manager._discord.send_trade_alert.assert_called_once()
+        call_kwargs = manager._discord.send_trade_alert.call_args.kwargs
+        assert call_kwargs["direction"] == "long"
+        assert call_kwargs["net_exposure"] == 0.005
+
+    @pytest.mark.asyncio
+    async def test_manager_passes_strategy_regime_to_discord(self):
+        """AlertManager.send_trade_alert should forward strategy_name/regime."""
+        config = AlertConfig(alerts_enabled=True, discord_enabled=True)
+        manager = AlertManager(config=config)
+        manager._discord = MagicMock()
+        manager._discord.send_trade_alert = AsyncMock(return_value=True)
+
+        await manager.send_trade_alert(
+            symbol="BTC/USDT", side="buy", price=67500, amount=0.001,
+            strategy_name="GridStrategy", regime="ranging",
+        )
+
+        call_kwargs = manager._discord.send_trade_alert.call_args.kwargs
+        assert call_kwargs["strategy_name"] == "GridStrategy"
+        assert call_kwargs["regime"] == "ranging"
+
+    @pytest.mark.asyncio
+    async def test_manager_trade_alert_backward_compat(self):
+        """Existing callers without new params should still work."""
+        config = AlertConfig(alerts_enabled=True, discord_enabled=True)
+        manager = AlertManager(config=config)
+        manager._discord = MagicMock()
+        manager._discord.send_trade_alert = AsyncMock(return_value=True)
+
+        await manager.send_trade_alert(
+            symbol="BTC/USDT", side="buy", price=67500, amount=0.001,
+        )
+
+        call_kwargs = manager._discord.send_trade_alert.call_args.kwargs
+        assert call_kwargs["direction"] is None
+        assert call_kwargs["net_exposure"] is None
+        assert call_kwargs["strategy_name"] is None
+        assert call_kwargs["regime"] is None
+
+
+class TestTradeAlertStrategyRegimeFields:
+    """Tests for strategy/regime fields in Discord trade alert embed."""
+
+    @pytest.mark.asyncio
+    async def test_trade_alert_strategy_field(self):
+        """Verify send_trade_alert embed includes Strategy field."""
+        alert = DiscordAlert(webhook_url="https://fake.webhook.url/test")
+
+        with patch.object(alert, "_get_session") as mock_get_session:
+            mock_resp = AsyncMock()
+            mock_resp.status = 204
+            mock_session = AsyncMock()
+            mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_session.post.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_get_session.return_value = mock_session
+
+            await alert.send_trade_alert(
+                symbol="BTC/USDT", side="buy", price=67500.0, amount=0.001,
+                strategy_name="GridStrategy",
+            )
+
+            call_args = mock_session.post.call_args
+            payload = call_args.kwargs.get("json", call_args[1].get("json", {}))
+            fields = payload["embeds"][0]["fields"]
+            strategy_fields = [f for f in fields if f["name"] == "Strategy"]
+            assert len(strategy_fields) == 1
+            assert "GridStrategy" in strategy_fields[0]["value"]
+
+    @pytest.mark.asyncio
+    async def test_trade_alert_regime_field(self):
+        """Verify send_trade_alert embed includes Regime field."""
+        alert = DiscordAlert(webhook_url="https://fake.webhook.url/test")
+
+        with patch.object(alert, "_get_session") as mock_get_session:
+            mock_resp = AsyncMock()
+            mock_resp.status = 204
+            mock_session = AsyncMock()
+            mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_session.post.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_get_session.return_value = mock_session
+
+            await alert.send_trade_alert(
+                symbol="BTC/USDT", side="buy", price=67500.0, amount=0.001,
+                regime="trending",
+            )
+
+            call_args = mock_session.post.call_args
+            payload = call_args.kwargs.get("json", call_args[1].get("json", {}))
+            fields = payload["embeds"][0]["fields"]
+            regime_fields = [f for f in fields if f["name"] == "Regime"]
+            assert len(regime_fields) == 1
+            assert "trending" in regime_fields[0]["value"]
+
+    @pytest.mark.asyncio
+    async def test_trade_alert_no_strategy_no_field(self):
+        """No Strategy field when strategy_name is None."""
+        alert = DiscordAlert(webhook_url="https://fake.webhook.url/test")
+
+        with patch.object(alert, "_get_session") as mock_get_session:
+            mock_resp = AsyncMock()
+            mock_resp.status = 204
+            mock_session = AsyncMock()
+            mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_session.post.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_get_session.return_value = mock_session
+
+            await alert.send_trade_alert(
+                symbol="BTC/USDT", side="buy", price=67500.0, amount=0.001,
+            )
+
+            call_args = mock_session.post.call_args
+            payload = call_args.kwargs.get("json", call_args[1].get("json", {}))
+            fields = payload["embeds"][0]["fields"]
+            strategy_fields = [f for f in fields if f["name"] == "Strategy"]
+            assert len(strategy_fields) == 0
+
+
+class TestFillTimeGuard:
+    """Test fill_time == 0 guard in check_tp_sl."""
+
+    def test_fill_time_zero_skipped(self):
+        """Level with fill_price > 0 but fill_time == 0 should be skipped."""
+        from binance_bot.strategies.base import GridLevel, SignalType
+        from binance_bot.strategies.grid import GridStrategy, GridConfig
+
+        config = GridConfig(grid_levels=3, grid_spacing_pct=1.0)
+        strategy = GridStrategy("BTC/USDT", config)
+
+        # Manually create a level with fill_price set but fill_time == 0 (invalid state)
+        level = GridLevel(
+            price=50000.0, side=SignalType.BUY, amount=0.001,
+            filled=True, fill_price=50000.0, fill_time=0,
+            take_profit=51000.0, stop_loss=49000.0,
+        )
+        strategy.levels = [level]
+
+        # Even though TP should trigger at 51500, fill_time==0 should skip it
+        events = strategy.check_tp_sl(51500.0)
+        assert len(events) == 0
+
+    def test_fill_time_nonzero_processed(self):
+        """Level with valid fill_time should be processed normally."""
+        import time
+        from binance_bot.strategies.base import GridLevel, SignalType
+        from binance_bot.strategies.grid import GridStrategy, GridConfig
+
+        config = GridConfig(grid_levels=3, grid_spacing_pct=1.0)
+        strategy = GridStrategy("BTC/USDT", config)
+
+        level = GridLevel(
+            price=50000.0, side=SignalType.BUY, amount=0.001,
+            filled=True, fill_price=50000.0,
+            fill_time=int(time.time() * 1000),
+            take_profit=51000.0, stop_loss=49000.0,
+        )
+        strategy.levels = [level]
+
+        events = strategy.check_tp_sl(51500.0)
+        assert len(events) == 1
+        assert events[0]["type"] == "take_profit"
