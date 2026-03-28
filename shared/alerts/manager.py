@@ -168,21 +168,25 @@ class AlertManager:
         pnl: Optional[float] = None,
         pnl_pct: Optional[float] = None,
         order_id: Optional[str] = None,
+        direction: Optional[str] = None,
+        net_exposure: Optional[float] = None,
+        strategy_name: Optional[str] = None,
+        regime: Optional[str] = None,
     ) -> bool:
         """Send trade alert to configured channels.
-        
+
         Returns:
             True if sent to at least one channel
         """
         if not self.config.alerts_enabled or not self.config.alert_on_trade:
             return False
-        
+
         alert_key = f"trade_{symbol}_{side}"
         if not self._check_rate_limit(alert_key):
             return False
-        
+
         success = False
-        
+
         if self.config.discord_enabled:
             result = await self.discord.send_trade_alert(
                 symbol=symbol,
@@ -192,6 +196,10 @@ class AlertManager:
                 pnl=pnl,
                 pnl_pct=pnl_pct,
                 order_id=order_id,
+                direction=direction,
+                net_exposure=net_exposure,
+                strategy_name=strategy_name,
+                regime=regime,
             )
             success = success or result
         
