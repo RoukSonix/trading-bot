@@ -85,10 +85,10 @@ class TestBug002LLMTimeout:
         assert "wait_for" in source
         assert "timeout" in source
 
-    def test_timeout_is_90_seconds(self):
+    def test_timeout_is_120_seconds(self):
         """Verify LLM_TIMEOUT_SEC was raised to 90s."""
         from shared.constants import LLM_TIMEOUT_SEC
-        assert LLM_TIMEOUT_SEC == 90
+        assert LLM_TIMEOUT_SEC == 120
 
     def test_jesse_ai_timeout_matches_constant(self):
         """Verify jesse-bot AI_TIMEOUT uses the shared constant."""
