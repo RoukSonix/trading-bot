@@ -538,11 +538,12 @@ class TradingBot:
                 
             except Exception as e:
                 self.errors += 1
-                logger.error(f"Error in main loop: {e}")
+                error_msg = str(e) or f"{type(e).__name__}: (no message)"
+                logger.error(f"Error in main loop: {error_msg}")
                 
                 # Send error alert
                 await self.alert_manager.send_error_alert(
-                    error=str(e),
+                    error=error_msg,
                     context="Main trading loop",
                     exc=e,
                     level=AlertLevel.ERROR,
