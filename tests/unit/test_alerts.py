@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -576,3 +576,176 @@ class TestFillTimeGuard:
         events = strategy.check_tp_sl(51500.0)
         assert len(events) == 1
         assert events[0]["type"] == "take_profit"
+
+
+class TestErrorAlertEmbedDescription:
+    """Tests for error alert embed description field."""
+
+    @pytest.mark.asyncio
+    async def test_error_alert_embed_has_description(self):
+        """Error alert embed should include description with context and error."""
+        alert = DiscordAlert(webhook_url="https://fake.webhook.url/test")
+
+        with patch.object(alert, "_get_session") as mock_get_session:
+            mock_resp = AsyncMock()
+            mock_resp.status = 204
+            mock_session = AsyncMock()
+            mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_session.post.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_get_session.return_value = mock_session
+
+            await alert.send_error_alert(
+                error="Connection timeout", context="Main loop",
+            )
+
+            call_args = mock_session.post.call_args
+            payload = call_args.kwargs.get("json", call_args[1].get("json", {}))
+            description = payload["embeds"][0]["description"]
+            assert "Main loop" in description
+            assert "Connection timeout" in description
+
+    @pytest.mark.asyncio
+    async def test_error_alert_embed_description_without_context(self):
+        """Error alert embed description should contain error text when no context."""
+        alert = DiscordAlert(webhook_url="https://fake.webhook.url/test")
+
+        with patch.object(alert, "_get_session") as mock_get_session:
+            mock_resp = AsyncMock()
+            mock_resp.status = 204
+            mock_session = AsyncMock()
+            mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_session.post.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_get_session.return_value = mock_session
+
+            await alert.send_error_alert(error="Connection timeout")
+
+            call_args = mock_session.post.call_args
+            payload = call_args.kwargs.get("json", call_args[1].get("json", {}))
+            description = payload["embeds"][0]["description"]
+            assert "Connection timeout" in description
+            assert "None" not in description
+
+    @pytest.mark.asyncio
+    async def test_send_webhook_content_fallback_includes_description(self):
+        """Auto-generated content fallback should include embed description."""
+        alert = DiscordAlert(webhook_url="https://fake.webhook.url/test")
+
+        with patch.object(alert, "_get_session") as mock_get_session:
+            mock_resp = AsyncMock()
+            mock_resp.status = 204
+            mock_session = AsyncMock()
+            mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_session.post.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_get_session.return_value = mock_session
+
+            # Send payload with embed that has description but no content
+            payload = {
+                "embeds": [{
+                    "title": "Test Alert",
+                    "description": "Something went wrong",
+                    "color": 0xFF0000,
+                }]
+            }
+            await alert._send_webhook(payload)
+
+            call_args = mock_session.post.call_args
+            sent_payload = call_args.kwargs.get("json", call_args[1].get("json", {}))
+            assert "Something went wrong" in sent_payload["content"]
+            assert "**Test Alert**" in sent_payload["content"]
+
+
+class TestErrorDedup:
+    """Tests for error alert deduplication in AlertManager."""
+
+    @pytest.mark.asyncio
+    async def test_error_dedup_suppresses_identical_errors(self):
+        """Identical error+context sent twice quickly should only call Discord once."""
+        config = AlertConfig(
+            alerts_enabled=True, discord_enabled=True, error_dedup_seconds=900,
+        )
+        manager = AlertManager(config=config)
+        manager._discord = MagicMock()
+        manager._discord.send_error_alert = AsyncMock(return_value=True)
+
+        result1 = await manager.send_error_alert(
+            error="Connection timeout", context="Main loop",
+        )
+        result2 = await manager.send_error_alert(
+            error="Connection timeout", context="Main loop",
+        )
+
+        assert result1 is True
+        assert result2 is False
+        assert manager._discord.send_error_alert.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_error_dedup_allows_different_errors_same_context(self):
+        """Different errors with the same context should both be sent."""
+        config = AlertConfig(
+            alerts_enabled=True, discord_enabled=True, error_dedup_seconds=900,
+        )
+        manager = AlertManager(config=config)
+        manager._discord = MagicMock()
+        manager._discord.send_error_alert = AsyncMock(return_value=True)
+
+        result1 = await manager.send_error_alert(
+            error="Connection timeout", context="Main loop",
+        )
+        result2 = await manager.send_error_alert(
+            error="Invalid API key", context="Main loop",
+        )
+
+        assert result1 is True
+        assert result2 is True
+        assert manager._discord.send_error_alert.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_error_dedup_allows_same_error_after_expiry(self):
+        """Same error should be sent again after dedup window expires."""
+        config = AlertConfig(
+            alerts_enabled=True, discord_enabled=True, error_dedup_seconds=900,
+            min_alert_interval_seconds=0,
+        )
+        manager = AlertManager(config=config)
+        manager._discord = MagicMock()
+        manager._discord.send_error_alert = AsyncMock(return_value=True)
+
+        result1 = await manager.send_error_alert(
+            error="Connection timeout", context="Main loop",
+        )
+        assert result1 is True
+
+        # Manually backdate the dedup entry to simulate expiry
+        dedup_key = ("Connection timeout"[:200], "Main loop")
+        manager._error_dedup[dedup_key] = (
+            datetime.now(timezone.utc) - timedelta(seconds=901)
+        )
+        # Also clear rate limit state so the interval check doesn't block
+        manager._last_alert_time.clear()
+
+        result2 = await manager.send_error_alert(
+            error="Connection timeout", context="Main loop",
+        )
+        assert result2 is True
+        assert manager._discord.send_error_alert.call_count == 2
+
+
+class TestErrorDedupConfig:
+    """Tests for error_dedup_seconds in AlertConfig."""
+
+    def test_error_dedup_config_default(self):
+        """Default error_dedup_seconds should be 900."""
+        config = AlertConfig()
+        assert config.error_dedup_seconds == 900
+
+    def test_error_dedup_config_custom(self):
+        """Custom error_dedup_seconds should be stored."""
+        config = AlertConfig(error_dedup_seconds=300)
+        assert config.error_dedup_seconds == 300
+
+    def test_error_dedup_config_to_dict(self):
+        """to_dict should include error_dedup_seconds."""
+        config = AlertConfig()
+        d = config.to_dict()
+        assert "error_dedup_seconds" in d
+        assert d["error_dedup_seconds"] == 900

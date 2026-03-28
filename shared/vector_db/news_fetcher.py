@@ -148,7 +148,7 @@ class NewsFetcher:
         except aiohttp.ClientError as e:
             logger.warning(f"CryptoCompare request failed: {e}")
         except Exception as e:
-            logger.error(f"Unexpected error fetching CryptoCompare: {e}")
+            logger.warning(f"Unexpected error fetching CryptoCompare: {e}")
 
         return articles
 
