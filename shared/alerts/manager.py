@@ -36,6 +36,7 @@ class AlertConfig:
         daily_summary_time: str = "20:00",  # UTC
         rate_limit_per_minute: int = 10,
         min_alert_interval_seconds: int = 5,
+        error_dedup_seconds: int = 900,
     ):
         self.alerts_enabled = alerts_enabled
         self.discord_enabled = discord_enabled
@@ -46,6 +47,7 @@ class AlertConfig:
         self.daily_summary_time = daily_summary_time
         self.rate_limit_per_minute = rate_limit_per_minute
         self.min_alert_interval_seconds = min_alert_interval_seconds
+        self.error_dedup_seconds = error_dedup_seconds
 
         # Validate daily_summary_time format
         try:
@@ -70,6 +72,7 @@ class AlertConfig:
             "daily_summary_time": self.daily_summary_time,
             "rate_limit_per_minute": self.rate_limit_per_minute,
             "min_alert_interval_seconds": self.min_alert_interval_seconds,
+            "error_dedup_seconds": self.error_dedup_seconds,
         }
     
     @classmethod
@@ -99,6 +102,9 @@ class AlertManager:
         self._alert_timestamps: deque = deque(maxlen=100)
         self._last_alert_time: dict[str, datetime] = {}
         
+        # Error deduplication: (error_snippet, context) -> last-sent timestamp
+        self._error_dedup: dict = {}
+
         # Stats
         self.alerts_sent = 0
         self.alerts_blocked = 0
@@ -275,20 +281,38 @@ Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
         exc: Optional[Exception] = None,
         level: AlertLevel = AlertLevel.ERROR,
     ) -> bool:
-        """Send error alert."""
+        """Send error alert with deduplication to prevent spam."""
         if not self.config.alerts_enabled or not self.config.alert_on_error:
             return False
-        
-        alert_key = f"error_{context or 'general'}"
+
+        now = datetime.now(timezone.utc)
+
+        # Clean expired dedup entries
+        expired_keys = [
+            k for k, ts in self._error_dedup.items()
+            if (now - ts).total_seconds() > self.config.error_dedup_seconds
+        ]
+        for k in expired_keys:
+            del self._error_dedup[k]
+
+        # Check error deduplication
+        dedup_key = (error[:200], context or "general")
+        if dedup_key in self._error_dedup:
+            elapsed = (now - self._error_dedup[dedup_key]).total_seconds()
+            if elapsed < self.config.error_dedup_seconds:
+                logger.debug(f"Error alert suppressed (dedup): {dedup_key[1]} - {dedup_key[0][:50]}")
+                return False
+
+        alert_key = f"error_{context or 'general'}_{hash(error[:200]) & 0xFFFFFFFF}"
         if not self._check_rate_limit(alert_key):
             return False
-        
+
         tb = None
         if exc:
             tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-        
+
         success = False
-        
+
         if self.config.discord_enabled:
             result = await self.discord.send_error_alert(
                 error=error,
@@ -296,7 +320,7 @@ Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
                 traceback=tb,
             )
             success = success or result
-        
+
         if self.config.email_enabled and level in (AlertLevel.ERROR, AlertLevel.CRITICAL):
             body = f"""
 Error: {error}
@@ -308,10 +332,11 @@ Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
 """
             result = await self.email.send_alert(f"Error: {error[:50]}", body)
             success = success or result
-        
+
         if success:
             self._record_alert(alert_key)
-        
+            self._error_dedup[dedup_key] = now
+
         return success
     
     async def send_daily_summary(

@@ -64,7 +64,8 @@ class DiscordAlert:
         if "embeds" in payload and payload["embeds"] and "content" not in payload:
             embed = payload["embeds"][0]
             title = embed.get("title", "Alert")
-            payload["content"] = f"**{title}**"
+            description = embed.get("description", "")
+            payload["content"] = f"**{title}**\n{description}" if description else f"**{title}**"
         
         # Suppress notifications by default (silent mode)
         if silent:
@@ -273,17 +274,24 @@ class DiscordAlert:
             True if sent successfully
         """
         fields = [{"name": "Error", "value": f"```{error[:1000]}```", "inline": False}]
-        
+
         if context:
             fields.insert(0, {"name": "Context", "value": context, "inline": False})
-        
+
         if traceback:
             # Truncate traceback to fit Discord limit
             tb = traceback[:1000] + "..." if len(traceback) > 1000 else traceback
             fields.append({"name": "Traceback", "value": f"```python\n{tb}```", "inline": False})
-        
+
+        # Build description for embed visibility even if fields fail to render
+        if context:
+            description = f"{context}: {error[:200]}"
+        else:
+            description = error[:200]
+
         embed = {
             "title": "🚨 Error Alert",
+            "description": description,
             "color": self.COLOR_ERROR,
             "fields": fields,
             "timestamp": datetime.now(timezone.utc).isoformat(),
