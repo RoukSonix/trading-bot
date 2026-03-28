@@ -197,8 +197,21 @@ class DiscordAlert:
             "footer": {"text": "Trading Bot"},
         }
 
-        return await self._send_webhook({"embeds": [embed]})
-    
+        # Build content fallback for mobile Discord
+        parts = [symbol, f"${price:,.2f}", f"{amount:.6f}"]
+        if pnl is not None:
+            pnl_str = f"PnL: ${pnl:+,.2f}"
+            if pnl_pct is not None:
+                pnl_str += f" ({pnl_pct:+.2f}%)"
+            parts.append(pnl_str)
+        if strategy_name:
+            parts.append(strategy_name)
+        if regime:
+            parts.append(regime)
+        content = f"{title} | {' | '.join(parts)}"
+
+        return await self._send_webhook({"content": content, "embeds": [embed]})
+
     async def send_status_alert(
         self,
         status: str,
@@ -254,9 +267,19 @@ class DiscordAlert:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "footer": {"text": "Trading Bot"},
         }
-        
-        return await self._send_webhook({"embeds": [embed]})
-    
+
+        # Build content fallback for mobile Discord
+        parts = [symbol]
+        if current_price is not None:
+            parts.append(f"${current_price:,.2f}")
+        if total_value is not None:
+            parts.append(f"Portfolio: ${total_value:,.2f}")
+        if reason:
+            parts.append(reason)
+        content = f"{title} | {' | '.join(parts)}"
+
+        return await self._send_webhook({"content": content, "embeds": [embed]})
+
     async def send_error_alert(
         self,
         error: str,
@@ -297,8 +320,14 @@ class DiscordAlert:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "footer": {"text": "Trading Bot"},
         }
-        
-        return await self._send_webhook({"embeds": [embed]})
+
+        # Build content fallback for mobile Discord
+        if context:
+            content = f"🚨 Error | {context}: {error[:200]}"
+        else:
+            content = f"🚨 Error: {error[:200]}"
+
+        return await self._send_webhook({"content": content, "embeds": [embed]})
     
     async def send_daily_summary(
         self,
@@ -377,15 +406,30 @@ class DiscordAlert:
         if trades_list:
             fields.append({"name": "Trades Count", "value": str(len(trades_list)), "inline": True})
 
+        date_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+
         embed = {
-            "title": f"📊 Daily Summary - {datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
+            "title": f"📊 Daily Summary - {date_str}",
             "color": color,
             "fields": fields,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "footer": {"text": "Trading Bot | Daily Report"},
         }
-        
-        return await self._send_webhook({"embeds": [embed]})
+
+        # Build content fallback for mobile Discord
+        display_balance = current_balance if current_balance is not None else end_balance
+        summary_parts = [symbol, f"Balance: ${display_balance:,.2f}"]
+        if today_pnl is not None:
+            today_str = f"Today: ${today_pnl:+,.2f}"
+            if start_balance and start_balance > 0:
+                today_pct = (today_pnl / start_balance) * 100
+                today_str += f" ({today_pct:+.2f}%)"
+            summary_parts.append(today_str)
+        summary_parts.append(f"PnL: ${total_pnl:+,.2f} ({pnl_pct:+.2f}%)")
+        summary_parts.append(f"Trades: {total_trades} (W:{winning_trades}/L:{losing_trades})")
+        content = f"📊 Daily Summary - {date_str} | {' | '.join(summary_parts)}"
+
+        return await self._send_webhook({"content": content, "embeds": [embed]})
     
     async def send_tp_sl_alert(
         self,
@@ -433,8 +477,10 @@ class DiscordAlert:
             fields.append({"name": "Exit Price", "value": f"${exit_price:,.2f}", "inline": True})
             fields.append({"name": "PnL", "value": f"${pnl_emoji}{pnl:,.2f}", "inline": True})
 
+        tp_sl_emoji = "🎯" if event_type == "take_profit" else "🛑" if "stop" in event_type else "🔒"
+
         embed = {
-            "title": f"{'🎯' if event_type == 'take_profit' else '🛑' if 'stop' in event_type else '🔒'} {title_text}",
+            "title": f"{tp_sl_emoji} {title_text}",
             "description": f"Level ${level_price:,.2f} closed at ${exit_price:,.2f} ({pnl_emoji}${pnl:,.2f})",
             "color": color,
             "fields": fields,
@@ -442,7 +488,23 @@ class DiscordAlert:
             "footer": {"text": "Trading Bot | TP/SL"},
         }
 
-        return await self._send_webhook({"embeds": [embed]})
+        # Build content fallback for mobile Discord
+        parts = [symbol, direction.upper() if direction else ""]
+        if event_type == "break_even" and break_even_price is not None:
+            parts.append(f"Entry: ${level_price:,.2f}")
+            parts.append(f"New SL: ${break_even_price:,.2f}")
+        else:
+            parts.append(f"Entry: ${level_price:,.2f}")
+            if exit_price is not None:
+                parts.append(f"Exit: ${exit_price:,.2f}")
+            if pnl is not None:
+                pnl_sign = "+" if pnl >= 0 else ""
+                parts.append(f"PnL: {pnl_sign}${pnl:,.2f}")
+        # Filter out empty strings
+        parts = [p for p in parts if p]
+        content = f"{tp_sl_emoji} {title_text} | {' | '.join(parts)}"
+
+        return await self._send_webhook({"content": content, "embeds": [embed]})
 
     async def send_custom(
         self,
