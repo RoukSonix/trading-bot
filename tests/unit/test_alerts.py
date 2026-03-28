@@ -749,3 +749,226 @@ class TestErrorDedupConfig:
         d = config.to_dict()
         assert "error_dedup_seconds" in d
         assert d["error_dedup_seconds"] == 900
+
+
+class TestContentFallback:
+    """Tests for explicit content fallback text in all Discord alert webhooks."""
+
+    def _make_alert_and_mock(self):
+        """Create a DiscordAlert with a fake webhook and a mock session."""
+        alert = DiscordAlert(webhook_url="https://fake.webhook.url/test")
+        mock_resp = AsyncMock()
+        mock_resp.status = 204
+        mock_session = AsyncMock()
+        mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_session.post.return_value.__aexit__ = AsyncMock(return_value=None)
+        return alert, mock_session
+
+    def _get_payload(self, mock_session):
+        """Extract the JSON payload from the mock session's post call."""
+        call_args = mock_session.post.call_args
+        return call_args.kwargs.get("json", call_args[1].get("json", {}))
+
+    # --- send_trade_alert ---
+
+    @pytest.mark.asyncio
+    async def test_trade_alert_content_buy(self):
+        """Buy trade with all params: content has symbol, price, strategy, regime."""
+        alert, mock_session = self._make_alert_and_mock()
+        with patch.object(alert, "_get_session", return_value=mock_session):
+            await alert.send_trade_alert(
+                symbol="BTC/USDT", side="buy", price=67500.0, amount=0.001,
+                strategy_name="GridStrategy", regime="trending",
+            )
+        payload = self._get_payload(mock_session)
+        content = payload["content"]
+        assert "BTC/USDT" in content
+        assert "$67,500.00" in content
+        assert "GridStrategy" in content
+        assert "trending" in content
+        assert "BUY" in content or "LONG BUY" in content
+
+    @pytest.mark.asyncio
+    async def test_trade_alert_content_sell_with_pnl(self):
+        """Sell trade with PnL: content includes PnL values."""
+        alert, mock_session = self._make_alert_and_mock()
+        with patch.object(alert, "_get_session", return_value=mock_session):
+            await alert.send_trade_alert(
+                symbol="ETH/USDT", side="sell", price=3500.0, amount=0.5,
+                pnl=150.0, pnl_pct=4.5,
+            )
+        payload = self._get_payload(mock_session)
+        content = payload["content"]
+        assert "ETH/USDT" in content
+        assert "PnL" in content
+        assert "+150.00" in content
+        assert "+4.50%" in content
+
+    @pytest.mark.asyncio
+    async def test_trade_alert_content_minimal(self):
+        """Buy with only required params: no 'None' in content."""
+        alert, mock_session = self._make_alert_and_mock()
+        with patch.object(alert, "_get_session", return_value=mock_session):
+            await alert.send_trade_alert(
+                symbol="BTC/USDT", side="buy", price=50000.0, amount=0.001,
+            )
+        payload = self._get_payload(mock_session)
+        content = payload["content"]
+        assert "BTC/USDT" in content
+        assert "None" not in content
+
+    # --- send_status_alert ---
+
+    @pytest.mark.asyncio
+    async def test_status_alert_content_started(self):
+        """Started status with all params: content has symbol, price, portfolio, reason."""
+        alert, mock_session = self._make_alert_and_mock()
+        with patch.object(alert, "_get_session", return_value=mock_session):
+            await alert.send_status_alert(
+                status="started", symbol="BTC/USDT",
+                current_price=67500.0, total_value=10000.0,
+                reason="Manual start",
+            )
+        payload = self._get_payload(mock_session)
+        content = payload["content"]
+        assert "BTC/USDT" in content
+        assert "$67,500.00" in content
+        assert "Portfolio: $10,000.00" in content
+        assert "Manual start" in content
+        assert "Bot Started" in content
+
+    @pytest.mark.asyncio
+    async def test_status_alert_content_minimal(self):
+        """Status with only required params: no 'None' in content."""
+        alert, mock_session = self._make_alert_and_mock()
+        with patch.object(alert, "_get_session", return_value=mock_session):
+            await alert.send_status_alert(
+                status="started", symbol="BTC/USDT",
+            )
+        payload = self._get_payload(mock_session)
+        content = payload["content"]
+        assert "BTC/USDT" in content
+        assert "None" not in content
+
+    # --- send_daily_summary ---
+
+    @pytest.mark.asyncio
+    async def test_daily_summary_content(self):
+        """Full daily summary with today_pnl: content has balance, PnL, trades."""
+        alert, mock_session = self._make_alert_and_mock()
+        with patch.object(alert, "_get_session", return_value=mock_session):
+            await alert.send_daily_summary(
+                symbol="BTC/USDT",
+                start_balance=10000, end_balance=10350,
+                total_trades=12, winning_trades=8, losing_trades=4,
+                total_pnl=350, max_drawdown=2.1,
+                current_balance=10350.0, today_pnl=150.0,
+            )
+        payload = self._get_payload(mock_session)
+        content = payload["content"]
+        assert "Daily Summary" in content
+        assert "BTC/USDT" in content
+        assert "Balance: $10,350.00" in content
+        assert "Today: $+150.00" in content
+        assert "Trades: 12 (W:8/L:4)" in content
+
+    @pytest.mark.asyncio
+    async def test_daily_summary_content_minimal(self):
+        """Daily summary with only required params: no 'None' in content."""
+        alert, mock_session = self._make_alert_and_mock()
+        with patch.object(alert, "_get_session", return_value=mock_session):
+            await alert.send_daily_summary(
+                symbol="BTC/USDT",
+                start_balance=10000, end_balance=10100,
+                total_trades=5, winning_trades=3, losing_trades=2,
+                total_pnl=100, max_drawdown=1.5,
+            )
+        payload = self._get_payload(mock_session)
+        content = payload["content"]
+        assert "BTC/USDT" in content
+        assert "None" not in content
+        # Should use end_balance as fallback
+        assert "Balance: $10,100.00" in content
+
+    # --- send_tp_sl_alert ---
+
+    @pytest.mark.asyncio
+    async def test_tp_sl_content_take_profit(self):
+        """TP hit with PnL: content has symbol, entry, exit, PnL."""
+        alert, mock_session = self._make_alert_and_mock()
+        with patch.object(alert, "_get_session", return_value=mock_session):
+            await alert.send_tp_sl_alert(
+                event_type="take_profit", symbol="BTC/USDT",
+                level_price=50000.0, exit_price=51000.0,
+                pnl=100.0, direction="long",
+            )
+        payload = self._get_payload(mock_session)
+        content = payload["content"]
+        assert "BTC/USDT" in content
+        assert "LONG" in content
+        assert "Entry: $50,000.00" in content
+        assert "Exit: $51,000.00" in content
+        assert "PnL: +$100.00" in content
+        assert "TP Hit!" in content
+
+    @pytest.mark.asyncio
+    async def test_tp_sl_content_stop_loss(self):
+        """SL hit: content has stop emoji and negative PnL."""
+        alert, mock_session = self._make_alert_and_mock()
+        with patch.object(alert, "_get_session", return_value=mock_session):
+            await alert.send_tp_sl_alert(
+                event_type="stop_loss", symbol="ETH/USDT",
+                level_price=3500.0, exit_price=3400.0,
+                pnl=-50.0, direction="long",
+            )
+        payload = self._get_payload(mock_session)
+        content = payload["content"]
+        assert "ETH/USDT" in content
+        assert "SL Hit!" in content
+        assert "PnL: $-50.00" in content or "PnL: -$50.00" in content
+
+    @pytest.mark.asyncio
+    async def test_tp_sl_content_break_even(self):
+        """Break even with break_even_price: content has entry and new SL."""
+        alert, mock_session = self._make_alert_and_mock()
+        with patch.object(alert, "_get_session", return_value=mock_session):
+            await alert.send_tp_sl_alert(
+                event_type="break_even", symbol="BTC/USDT",
+                level_price=50000.0, exit_price=50500.0,
+                pnl=0.0, direction="long",
+                break_even_price=50000.0,
+            )
+        payload = self._get_payload(mock_session)
+        content = payload["content"]
+        assert "BTC/USDT" in content
+        assert "Entry: $50,000.00" in content
+        assert "New SL: $50,000.00" in content
+        assert "Break-Even" in content
+
+    # --- send_error_alert ---
+
+    @pytest.mark.asyncio
+    async def test_error_alert_content_with_context(self):
+        """Error with context: content has context and truncated error."""
+        alert, mock_session = self._make_alert_and_mock()
+        with patch.object(alert, "_get_session", return_value=mock_session):
+            await alert.send_error_alert(
+                error="Connection timeout after 10s",
+                context="Main loop",
+            )
+        payload = self._get_payload(mock_session)
+        content = payload["content"]
+        assert "Error" in content
+        assert "Main loop" in content
+        assert "Connection timeout" in content
+
+    @pytest.mark.asyncio
+    async def test_error_alert_content_without_context(self):
+        """Error without context: no 'None' in content."""
+        alert, mock_session = self._make_alert_and_mock()
+        with patch.object(alert, "_get_session", return_value=mock_session):
+            await alert.send_error_alert(error="Connection timeout")
+        payload = self._get_payload(mock_session)
+        content = payload["content"]
+        assert "Connection timeout" in content
+        assert "None" not in content
